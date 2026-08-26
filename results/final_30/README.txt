@@ -1,10 +1,10 @@
 Experiment: final_30
 Description: canonical 30 seeds, length 2000
 
-final_30: 5 workloads x 3 configs x 30 seeds, length=2000, 32 L1 lines x 8 words, MEM_LATENCY=40 cycles, store-buffer limit=16
+final_30: 5 workloads x 3 configs x 30 seeds, length=2000, 32 L1 lines x 8 words, 32-way, MEM_LATENCY=40 cycles, store-buffer limit=16
 
-Generated: 2026-08-26T10:56:48+00:00
-Git revision: 467da0d416c334f2cad1d1266b89ba547594d1c5 (dirty: False)
+Generated: 2026-08-26T13:10:05+00:00
+Git revision: a21fa41c7127f75c04f9e6c4627761e9aeff6a62 (dirty: False)
 Python: 3.14.6  platform: Linux-7.1.5-arch1-2-x86_64-with-glibc2.44
 Library versions: numpy=2.5.2, pandas=3.0.5, scikit_learn=1.9.0, matplotlib=3.11.1, seaborn=0.13.2
 

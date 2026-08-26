@@ -25,6 +25,9 @@
     "prefetch_latency": 0,
     "l1_lines": 32,
     "line_size": 8,
+    "l1_associativity": null,
+    "memory_issue_interval": 1,
+    "prefetch_mshr": 16,
     "wb_limit": 16
   },
   "nn_kwargs": {
