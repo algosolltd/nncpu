@@ -1,0 +1,7 @@
+{
+  "executable_name": "champsim_nncpu_no_l1d_prefetch",
+  "L1D": {
+    "prefetch_activate": "LOAD,RFO",
+    "prefetcher": "no"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "executable_name": "champsim_nncpu_raw_stride",
+  "L1D": {
+    "prefetch_activate": "LOAD,RFO",
+    "prefetcher": {
+      "model": "nncpu_regularity_stride",
+      "gate_enabled": false,
+      "window": 16,
+      "warmup": 8,
+      "support_percent": 35,
+      "degree": 3
+    }
+  }
+}

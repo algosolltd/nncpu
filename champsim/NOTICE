@@ -1,0 +1,4 @@
+The nncpu ChampSim adapter derives its IP-stride tracking and lookahead
+structure from ChampSim, copyright The ChampSim Contributors, licensed under
+the Apache License 2.0. The regularity admission filter and matched-control
+configuration are modifications by Algorithmica Solutions (2026).
