@@ -1,4 +1,33 @@
-# Results (paper dataset)
+# Results
+
+## Current matched-control finding
+
+The canonical research artifact is `results/research_gate_validation/`:
+21,240 raw rows, development seeds 0–9, disjoint holdout seeds 10–39, three
+machine profiles, and a complete lookahead sensitivity sweep. Repeated
+deterministic traces are collapsed to one independent unit rather than treated
+as 30 samples.
+
+At the predeclared constrained-profile lookahead of 8, dominant-delta
+regularity filtering improves raw stride by 1.08838x on random, 1.07587x on
+phased, and 1.01594x on agent-RAG traffic. It removes 99.55%, 83.07%, and
+20.86% of accepted requests, respectively. It is unchanged on the selected
+sequential, strided, mixed, embedding, and KV controls.
+
+The result has counterexamples: agent-RAG regresses in the ideal profile and a
+single merge-sort trace regresses at lookahead 1. The MLP has a conditional
+1.10087x advantage over regularity-filtered stride on timed KV traffic, but no
+random advantage and large losses on strided/mixed streams. The defensible
+contribution is the matched-control audit plus the regularity admission filter,
+not general NN superiority.
+
+Verify raw aggregation, statistical units, provenance, and claims with:
+
+```bash
+python -m benchmarks.verify_research
+```
+
+## Legacy idealized paper dataset
 
 Canonical run: **30 seeds**, 5 workloads × 3 configs, 2000 instrs, numpy MLP.
 Everything here is regenerable with:

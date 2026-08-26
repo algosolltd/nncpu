@@ -92,33 +92,32 @@ python benchmarks/trace_experiments.py     # -> results/exp_traces/
 python benchmarks/run_trace_file.py my.trace
 ```
 
-## Paper
+## Paper and current result
 
-`paper/main.tex` is a draft skeleton with the real numbers and figures
-already embedded (30-seed table, trace table, phasing/money plot).
-Compile from `paper/`: `pdflatex main.tex && pdflatex main.tex`.
+`paper/main.tex` is now a matched-control audit, not a claim that the neural
+prefetcher wins generally. The audit separates prediction from admission and
+adds asynchronous latency, 8-way profiles, memory issue bandwidth, finite
+prefetch MSHRs, lookahead, a demand-only shadow cache, and correct experimental
+units.
 
-## Results
+The strongest holdout result is a predictor-independent regularity filter:
+over the last 16 deltas it issues only when the dominant delta has at least
+35% support. Parameters were selected on seeds 0–9 and evaluated on 10–39.
 
-Full run (2000 instructions per workload):
+| Constrained profile, lookahead 8 | filtered stride vs stride | traffic reduction |
+|----------------------------------|--------------------------:|------------------:|
+| random read                      | 1.0884x                   | 99.55%            |
+| phased switch                    | 1.0759x                   | 83.07%            |
+| agent RAG                        | 1.0159x                   | 20.86%            |
+| sequential / strided / mixed / KV| 1.0000x                   | 0%                |
 
-| Workload          | Speedup vs no-prefetch (cycles) | Hit rate (base→stride→nn) |
-|-------------------|-------------------------------:|----------------------------|
-| sequential_read   | stride 3.4x / nn 3.3x          | 0.88 → 1.00 → 1.00         |
-| strided_read      | stride 19.9x / nn 9.1x         | 0.00 → 1.00 → 0.93         |
-| mixed_read_write  | stride 8.7x / nn 1.0x          | 0.50 → 1.00 → 0.50         |
-| random_read       | stride 0.98x / nn 1.00x        | 0.10 → 0.08 → 0.10         |
-| arithmetic_mix    | 1.00x (no memory)              | —                           |
+The matched NN comparison is mostly negative: it is indistinguishable from
+the classical filtered control on random, about 1.10x faster on one timed KV
+condition, but substantially slower on strided and mixed traffic. This is
+evidence for admission control and careful attribution—not proof of hardware
+speedup. Native ChampSim/SPEC/GAP evaluation remains the next validity gate.
 
-Takeaways:
-
-* on sequential/strided streams the NN closes part of the gap to stride;
-  the current relative gate is too conservative on mixed read/write;
-* on unpredictable traffic stride *hurts* (pollutes the cache, hit rate
-  drops below baseline) whereas the NN usually backs off; one of the 30
-  verified random seeds still regresses by 39 cycles;
-* NN speedups are reproducible within the declared simulated cycle model;
-  `verify_paper` separately shows their sensitivity to prefetch timeliness.
+Compile from `paper/` with `pdflatex main.tex && pdflatex main.tex`.
 
 ## Quick start
 
@@ -127,6 +126,7 @@ pip install -r requirements.txt
 python -m pytest tests -q            # unit, integration and evidence tests
 python main.py                       # default experiment (stored under results/)
 python -m benchmarks.verify_paper --seeds 1   # source/artifact/claim parity
+python -m benchmarks.verify_research          # matched-control holdout artifact
 
 # static dashboard (no server needed to view)
 python webapp/make_dashboard.py      # builds dashboard.html from results/
