@@ -101,6 +101,11 @@ def read_champsim(
             except ValueError:
                 continue
             inst = {"type": "STORE" if is_write else "LOAD", "address": addr}
+            if len(parts) >= 3:
+                try:
+                    inst["pc"] = int(parts[2], 16)
+                except ValueError:
+                    pass
             if is_write:
                 inst["value"] = 0
             out.append(inst)

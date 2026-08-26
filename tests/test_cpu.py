@@ -11,7 +11,12 @@ from nncpu.cpu import (
     LOAD_HIT_CYCLES,
     MachineConfig,
 )
-from nncpu.prefetchers import StridePrefetcher, NNPrefetcher, make_prefetcher
+from nncpu.prefetchers import (
+    NNPrefetcher,
+    Prefetcher,
+    StridePrefetcher,
+    make_prefetcher,
+)
 from nncpu.baselines import NextLinePrefetcher
 from nncpu.workloads import build_workloads
 
@@ -110,6 +115,31 @@ def test_nonzero_prefetch_latency_cannot_grant_an_immediate_hit():
     assert rep.hits == 0
     assert rep.misses == 2
     assert rep.prefetch_used == 1  # useful, but late
+    assert rep.prefetch_late == 1
+    assert rep.prefetch_timeliness == 0.0
+
+
+def test_shadow_cache_classifies_prefetch_benefit():
+    cpu = CPU(prefetcher=NextLinePrefetcher())
+    cpu.execute({"type": "LOAD", "address": 0x1000})
+    cpu.execute({"type": "LOAD", "address": 0x1008})
+    rep = cpu.report()
+    assert rep.prefetch_useful_hits == 1
+    assert rep.demand_only_misses == 2
+    assert rep.prefetch_coverage == 0.5
+    assert rep.prefetch_pollution_misses == 0
+
+
+def test_shadow_cache_classifies_prefetch_pollution():
+    machine = MachineConfig(l1_lines=2, line_size=1)
+    cpu = CPU(machine=machine)
+    cpu.execute({"type": "LOAD", "address": 10})
+    cpu.execute({"type": "LOAD", "address": 11})
+    cpu._prefetch(12)  # evicts 10 only from the real L1
+    cpu.execute({"type": "LOAD", "address": 10})
+    rep = cpu.report()
+    assert rep.prefetch_pollution_misses == 1
+    assert rep.demand_only_hits == 1
 
 
 @pytest.mark.parametrize(
@@ -119,6 +149,10 @@ def test_nonzero_prefetch_latency_cannot_grant_an_immediate_hit():
         {"l1_lines": 0},
         {"mem_latency": 0},
         {"prefetch_latency": -1},
+        {"l1_associativity": 0},
+        {"l1_lines": 10, "l1_associativity": 4},
+        {"memory_issue_interval": 0},
+        {"prefetch_mshr": -1},
         {"wb_limit": -1},
     ],
 )
@@ -140,6 +174,42 @@ def test_prefetchers_speedup_memory_workloads():
             assert cfg_cycles < base_cycles, (
                 f"{name}/{cfg} should beat baseline ({cfg_cycles} vs {base_cycles})"
             )
+
+
+def test_set_associativity_creates_conflicts_without_changing_capacity():
+    machine = MachineConfig(l1_lines=4, line_size=1, l1_associativity=2)
+    cpu = CPU(machine=machine)
+    # Lines 0, 2 and 4 all map to set zero; the third evicts line zero even
+    # though the other set remains empty.
+    for addr in (0, 2, 4, 0):
+        cpu.execute({"type": "LOAD", "address": addr})
+    assert cpu.report().misses == 4
+    assert len(cpu.cache) == 2
+
+
+def test_prefetch_mshr_limit_drops_excess_requests():
+    cpu = CPU(machine=MachineConfig(prefetch_latency=40, prefetch_mshr=1))
+    cpu._prefetch(0x1000)
+    cpu._prefetch(0x1008)
+    assert cpu.report().prefetch_requested == 2
+    assert cpu.report().prefetch_issued == 1
+    assert cpu.report().prefetch_dropped == 1
+
+
+def test_static_trace_pc_is_forwarded_to_prefetcher():
+    class Recorder(Prefetcher):
+        def __init__(self):
+            self.pcs = []
+
+        def predict_next(self, addr, pc, opcode):
+            self.pcs.append(pc)
+            return None
+
+    recorder = Recorder()
+    cpu = CPU(prefetcher=recorder)
+    cpu.execute({"type": "LOAD", "address": 1, "pc": 0xABC})
+    cpu.execute({"type": "LOAD", "address": 2})
+    assert recorder.pcs == [0xABC, 1]
 
 
 def run_to_cycles(instructions, prefetcher):

@@ -49,8 +49,8 @@ def test_champsim_byte_addresses_are_normalized_and_stores_replay(tmp_path):
     parsed = read_champsim(str(path))
 
     assert parsed == [
-        {"type": "LOAD", "address": 0x200},
-        {"type": "STORE", "address": 0x201, "value": 0},
+        {"type": "LOAD", "address": 0x200, "pc": 0x1},
+        {"type": "STORE", "address": 0x201, "pc": 0x2, "value": 0},
     ]
     # Adjacent 8-byte words share an 8-word cache line and the STORE has the
     # complete schema expected by CPU.execute.

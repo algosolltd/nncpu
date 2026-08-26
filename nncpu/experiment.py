@@ -267,7 +267,12 @@ def aggregate(runs_df: pd.DataFrame) -> pd.DataFrame:
             rec[f"cycles_{k}"] = v
         rec["mem_cycles_mean"] = g["mem_cycles"].mean()
         rec["arith_cycles_mean"] = g["arith_cycles"].mean()
-        for metric in ("hit_rate", "ipc", "prefetch_accuracy"):
+        for metric in (
+            "hit_rate", "ipc", "prefetch_accuracy", "prefetch_coverage",
+            "prefetch_timeliness", "prefetch_pollution_rate",
+        ):
+            if metric not in g.columns:  # backward-compatible artifact audit
+                continue
             s = _stats(g[metric])
             rec[f"{metric}_mean"] = s["mean"]
             rec[f"{metric}_std"] = s["std"]
