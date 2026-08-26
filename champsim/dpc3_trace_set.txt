@@ -1,0 +1,15 @@
+# Fixed external-evaluation set: the highest-weight public DPC-3 SimPoint for
+# each of eleven distinct SPEC CPU2017 programs. Weights come from the official
+# weights-and-simpoints-speccpu.tar.gz archive in the trace directory. Relative
+# URLs resolve below https://dpc3.compas.cs.stonybrook.edu/champsim-traces/speccpu/.
+600.perlbench_s-210B.champsimtrace.xz  # weight 0.480997
+603.bwaves_s-3699B.champsimtrace.xz    # weight 0.733890
+605.mcf_s-665B.champsimtrace.xz        # weight 0.440506
+607.cactuBSSN_s-2421B.champsimtrace.xz # weight 0.902072
+623.xalancbmk_s-700B.champsimtrace.xz  # weight 0.413137
+638.imagick_s-10316B.champsimtrace.xz  # weight 0.875316
+644.nab_s-5853B.champsimtrace.xz       # weight 0.314125
+648.exchange2_s-1699B.champsimtrace.xz # weight 0.182348
+649.fotonik3d_s-1176B.champsimtrace.xz # weight 0.497231
+654.roms_s-842B.champsimtrace.xz       # weight 0.431392
+657.xz_s-3167B.champsimtrace.xz        # weight 0.425974
