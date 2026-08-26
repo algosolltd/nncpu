@@ -1,24 +1,29 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ $# -lt 1 || $# -gt 2 ]]; then
-  echo "usage: $0 TRACE_DIRECTORY [PARALLEL_DOWNLOADS]" >&2
+if [[ $# -lt 1 || $# -gt 3 ]]; then
+  echo "usage: $0 TRACE_DIRECTORY [PARALLEL_DOWNLOADS] [TRACE_LIST]" >&2
   exit 2
 fi
 
 trace_directory=$1
 parallel_downloads=${2:-4}
 script_directory=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+trace_list=${3:-$script_directory/dpc3_trace_set.txt}
 base_url=https://dpc3.compas.cs.stonybrook.edu/champsim-traces/speccpu
 
 if ! [[ $parallel_downloads =~ ^[1-9][0-9]*$ ]]; then
   echo "PARALLEL_DOWNLOADS must be a positive integer" >&2
   exit 2
 fi
+if [[ ! -f $trace_list ]]; then
+  echo "TRACE_LIST does not exist: $trace_list" >&2
+  exit 2
+fi
 
 mkdir -p "$trace_directory"
 trace_names() {
-  sed 's/#.*//' "$script_directory/dpc3_trace_set.txt" | awk 'NF {$1=$1; print}'
+  sed 's/#.*//' "$trace_list" | awk 'NF {$1=$1; print}'
 }
 
 trace_names \

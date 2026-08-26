@@ -37,6 +37,18 @@ def test_raw_and_regularized_configs_are_matched_except_gate_and_name():
     assert raw == gated
 
 
+def test_official_stride_config_matches_raw_predictor_geometry():
+    official = json.loads((CHAMPSIM / "config" / "official_ip_stride.json").read_text())
+    raw = json.loads((CHAMPSIM / "config" / "raw_stride_control.json").read_text())
+    official_prefetcher = official["L1D"]["prefetcher"]
+    raw_prefetcher = raw["L1D"]["prefetcher"]
+
+    assert official["L1D"]["prefetch_activate"] == raw["L1D"]["prefetch_activate"]
+    assert official_prefetcher["degree"] == raw_prefetcher["degree"]
+    assert official_prefetcher["tracker_sets"] == raw_prefetcher.get("tracker_sets", 256)
+    assert official_prefetcher["tracker_ways"] == raw_prefetcher.get("tracker_ways", 4)
+
+
 def test_fixed_trace_set_has_one_simpoint_per_distinct_program():
     traces = [
         line.split("#", 1)[0].strip()
@@ -77,6 +89,18 @@ def test_fixed_trace_set_uses_documented_highest_weight_simpoints():
     assert actual == expected
 
 
+def test_holdout_is_disjoint_and_covers_remaining_spec17_programs():
+    development = set(campaign._read_trace_list(CHAMPSIM / "dpc3_trace_set.txt"))
+    holdout = set(campaign._read_trace_list(CHAMPSIM / "dpc3_holdout_trace_set.txt"))
+    development_programs = {trace.split("-", 1)[0] for trace in development}
+    holdout_programs = {trace.split("-", 1)[0] for trace in holdout}
+
+    assert len(development) == 11
+    assert len(holdout) == 9
+    assert development_programs.isdisjoint(holdout_programs)
+    assert len(development_programs | holdout_programs) == 20
+
+
 def test_fetcher_parses_commented_trace_names_without_trailing_spaces():
     script = (CHAMPSIM / "fetch_dpc3.sh").read_text()
     assert "awk 'NF {$1=$1; print}'" in script
@@ -113,6 +137,12 @@ def test_campaign_parser_uses_roi_and_custom_gate_counters(tmp_path):
             "name": "Simulation",
             "roi": {
                 "cores": [{"instructions": 200, "cycles": 100}],
+                "DRAM": [{
+                    "RQ ROW_BUFFER_HIT": 3,
+                    "RQ ROW_BUFFER_MISS": 4,
+                    "WQ ROW_BUFFER_HIT": 1,
+                    "WQ ROW_BUFFER_MISS": 2,
+                }],
                 "cpu0_L1D": {
                     "LOAD": {"miss": [7]},
                     "prefetch requested": 11,
@@ -120,6 +150,8 @@ def test_campaign_parser_uses_roi_and_custom_gate_counters(tmp_path):
                     "useful prefetch": 6,
                     "useless prefetch": 2,
                 },
+                "cpu0_L2C": {"PREFETCH": {"miss": [5]}},
+                "LLC": {"PREFETCH": {"miss": [4]}},
             },
         }
     ]
@@ -139,6 +171,10 @@ def test_campaign_parser_uses_roi_and_custom_gate_counters(tmp_path):
     assert record.ipc == 2.0
     assert record.l1d_load_misses == 7
     assert record.prefetch_requested == 11
+    assert record.l2c_prefetch_misses == 5
+    assert record.llc_prefetch_misses == 4
+    assert record.dram_read_requests == 7
+    assert record.dram_write_requests == 3
     assert record.gate_decisions == 80
     assert record.gate_suppressed == 9
     assert record.module_issued == 10
@@ -151,14 +187,29 @@ def test_campaign_statistics_treat_traces_as_units():
 
 
 def test_campaign_rejects_requested_as_accepted_traffic():
-    baseline = campaign.RunRecord("t", "no_l1d_prefetch", 100, 100, 1.0, 1, 0, 0, 0, 0, None, None, None)
-    raw = campaign.RunRecord("t", "raw_stride", 100, 100, 1.0, 1, 40, 10, 2, 1, 30, 0, 10)
-    gated = campaign.RunRecord("t", "regularity_stride", 100, 100, 1.0, 1, 10, 5, 2, 0, 30, 3, 5)
+    def record(config, requested, issued, useful, decisions, suppressed, dram):
+        return campaign.RunRecord(
+            trace="t", config=config, instructions=100, cycles=100, ipc=1.0,
+            l1d_load_misses=1, prefetch_requested=requested,
+            prefetch_issued=issued, useful_prefetch=useful, useless_prefetch=0,
+            l2c_prefetch_misses=0, llc_prefetch_misses=0,
+            dram_read_requests=dram, dram_write_requests=0,
+            gate_decisions=decisions, gate_suppressed=suppressed,
+            module_issued=issued if decisions is not None else None,
+        )
 
-    campaign._validate_records([baseline, raw, gated], simulation=100)
-    rows, summary = campaign._contrasts([baseline, raw, gated])
+    baseline = record("no_l1d_prefetch", 0, 0, 0, None, None, 20)
+    official = record("official_ip_stride", 40, 10, 2, None, None, 30)
+    raw = record("raw_stride", 40, 10, 2, 30, 0, 30)
+    gated = record("regularity_stride", 10, 5, 2, 30, 3, 24)
+
+    campaign._validate_records([baseline, official, raw, gated], simulation=100)
+    rows, summary = campaign._contrasts([baseline, official, raw, gated])
     matched = next(row for row in rows if row["control"] == "raw_stride")
 
     assert matched["prefetch_request_reduction"] == pytest.approx(0.75)
     assert matched["prefetch_issue_reduction"] == pytest.approx(0.5)
+    assert matched["dram_read_request_reduction"] == pytest.approx(0.2)
     assert summary["regularity_stride_vs_raw_stride"]["median_prefetch_issue_reduction"] == pytest.approx(0.5)
+    assert summary["regularity_stride_vs_raw_stride"]["aggregate_dram_read_request_reduction"] == pytest.approx(0.2)
+    assert summary["regularity_stride_vs_raw_stride"]["useful_prefetch_retention"] == 1.0

@@ -1,0 +1,12 @@
+# Frozen holdout: highest-weight DPC-3 SimPoint for every SPEC CPU2017 program
+# absent from dpc3_trace_set.txt. This list was recorded before any of these
+# nine traces were simulated with nncpu_regularity_stride.
+602.gcc_s-734B.champsimtrace.xz        # weight 0.641196
+619.lbm_s-4268B.champsimtrace.xz       # weight 0.418157
+620.omnetpp_s-874B.champsimtrace.xz    # weight 0.828467
+621.wrf_s-575B.champsimtrace.xz        # weight 0.439899
+625.x264_s-18B.champsimtrace.xz        # weight 0.253488
+627.cam4_s-573B.champsimtrace.xz       # weight 0.964686
+628.pop2_s-17B.champsimtrace.xz        # weight 1.000000
+631.deepsjeng_s-928B.champsimtrace.xz  # weight 0.990287
+641.leela_s-800B.champsimtrace.xz      # weight 0.255459

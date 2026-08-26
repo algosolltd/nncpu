@@ -25,7 +25,9 @@ The explicit directory creation works around the external-module dependency
 directory not being materialized by the Makefile at the pinned commit.
 
 The runtime-module build produces one `bin/champsim`; select the baseline,
-raw control, or gate with `--config` and the corresponding JSON in `config/`.
+official `ip_stride`, raw matched control, or gate with `--config` and the
+corresponding JSON in `config/`. The campaign requires every output metric of
+the gate-disabled control to match official `ip_stride` exactly.
 Fetch the fixed public trace set with:
 
 ```bash
@@ -43,10 +45,10 @@ per-trace contrasts:
 python /path/to/nncpu/champsim/campaign.py \
   --champsim /path/to/ChampSim \
   --trace-dir /path/to/traces \
+  --trace-list /path/to/nncpu/champsim/dpc3_holdout_trace_set.txt \
   --output /path/to/results \
   --warmup 50000000 --simulation 200000000 \
-  --jobs 4 \
-  $(sed 's/#.*//' /path/to/nncpu/champsim/dpc3_trace_set.txt)
+  --jobs 4
 ```
 
 The checked-in trace set contains the highest-weight SimPoint from each of
@@ -54,6 +56,11 @@ eleven distinct SPEC CPU2017 programs, selected from the official DPC-3
 weights archive. This external, deterministic rule avoids choosing traces by
 compressed size or observed gate performance. Do not interpret an IPC
 difference from a single trace as a population-level result.
+
+`dpc3_trace_set.txt` is the inspected external-development set;
+`dpc3_holdout_trace_set.txt` contains the nine remaining SPEC CPU2017
+programs and was fixed before their results were observed. The frozen protocol
+and decision rules are in `EXTERNAL_VALIDATION.md`.
 
 The module trains throughout warm-up, but its custom decision, suppression,
 and issue counters cover only the measured region of interest. ChampSim's JSON

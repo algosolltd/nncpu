@@ -1,0 +1,12 @@
+{
+  "executable_name": "champsim_nncpu_official_ip_stride",
+  "L1D": {
+    "prefetch_activate": "LOAD,RFO",
+    "prefetcher": {
+      "model": "ip_stride",
+      "degree": 3,
+      "tracker_sets": 256,
+      "tracker_ways": 4
+    }
+  }
+}
