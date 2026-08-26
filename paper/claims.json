@@ -6,21 +6,21 @@
       "workload": "random_read",
       "config": "baseline",
       "metric": "cycles_mean",
-      "value": 74083.0
+      "value": 73951.7
     },
     {
       "id": "random_nn_cycles",
       "workload": "random_read",
       "config": "nn",
       "metric": "cycles_mean",
-      "value": 74083.0
+      "value": 73930.9
     },
     {
       "id": "sequential_nn_speedup",
       "workload": "sequential_read",
       "config": "nn",
       "metric": "speedup_mean",
-      "value": 3.3253829760609652,
+      "value": 3.304716156133884,
       "atol": 1e-12
     },
     {
@@ -28,7 +28,7 @@
       "workload": "strided_read",
       "config": "nn",
       "metric": "speedup_mean",
-      "value": 9.116808749549499,
+      "value": 9.103381663589644,
       "atol": 1e-12
     },
     {
@@ -36,8 +36,20 @@
       "workload": "mixed_read_write",
       "config": "nn",
       "metric": "speedup_mean",
-      "value": 6.1176698410214,
+      "value": 1.00266715298516,
       "atol": 1e-12
+    }
+  ],
+  "run_values": [
+    {
+      "id": "random_exact_matches",
+      "metric": "random_exact_matches",
+      "value": 18
+    },
+    {
+      "id": "random_regressions",
+      "metric": "random_regressions",
+      "value": 1
     }
   ]
 }

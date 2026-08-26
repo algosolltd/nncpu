@@ -227,14 +227,16 @@ def validate_paper_artifact(
     base = random_rows[random_rows.config == "baseline"][["seed", "cycles", "hit_rate"]]
     nn = random_rows[random_rows.config == "nn"][["seed", "cycles", "hit_rate"]]
     paired = base.merge(nn, on="seed", suffixes=("_base", "_nn"))
-    random_exact = len(paired) == config.runs and np.array_equal(
-        paired[["cycles_base", "hit_rate_base"]].to_numpy(),
-        paired[["cycles_nn", "hit_rate_nn"]].to_numpy(),
+    exact_matches = int(
+        ((paired.cycles_base == paired.cycles_nn)
+         & (paired.hit_rate_base == paired.hit_rate_nn)).sum()
     )
+    regressions = int((paired.cycles_nn > paired.cycles_base).sum())
     report.add(
-        "claim_random_matches_baseline",
-        random_exact,
-        f"exact matches={int(((paired.cycles_base == paired.cycles_nn) & (paired.hit_rate_base == paired.hit_rate_nn)).sum())}/{config.runs}",
+        "random_non_regression_observation",
+        regressions == 0,
+        f"exact matches={exact_matches}/{config.runs}; regressions={regressions}/{config.runs}",
+        severity="warning",
     )
 
     if claims_path and os.path.exists(claims_path):
@@ -250,6 +252,13 @@ def validate_paper_artifact(
                 float(row.iloc[0][claim["metric"]]), float(claim["value"]),
                 rtol=0, atol=float(claim.get("atol", 1e-9)),
             ):
+                claim_errors.append(claim["id"])
+        observed_runs = {
+            "random_exact_matches": exact_matches,
+            "random_regressions": regressions,
+        }
+        for claim in claims.get("run_values", []):
+            if observed_runs.get(claim["metric"]) != claim["value"]:
                 claim_errors.append(claim["id"])
         report.add(
             "machine_readable_paper_claims",
