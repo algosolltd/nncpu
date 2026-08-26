@@ -1,0 +1,104 @@
+{
+  "seeds": 30,
+  "seed_start": 10,
+  "length": 2000,
+  "configs": [
+    "baseline",
+    "stride",
+    "gated_stride",
+    "regularity_stride",
+    "berti",
+    "gated_berti",
+    "regularity_berti",
+    "nn"
+  ],
+  "role": "holdout",
+  "development_seed_range": [
+    0,
+    9
+  ],
+  "regularity_gate": {
+    "window": 16,
+    "min_support": 0.35,
+    "selection": "selected on development seeds 0-9"
+  },
+  "include_real": true,
+  "profiles": [
+    {
+      "name": "ideal_full",
+      "machine": {
+        "fetch_cycles": 1,
+        "load_hit_cycles": 1,
+        "store_cycles": 1,
+        "mem_latency": 40,
+        "prefetch_latency": 0,
+        "l1_lines": 32,
+        "line_size": 8,
+        "l1_associativity": null,
+        "memory_issue_interval": 1,
+        "prefetch_mshr": 16,
+        "wb_limit": 16
+      },
+      "distances": [
+        1
+      ]
+    },
+    {
+      "name": "timed_8way",
+      "machine": {
+        "fetch_cycles": 1,
+        "load_hit_cycles": 1,
+        "store_cycles": 1,
+        "mem_latency": 40,
+        "prefetch_latency": 40,
+        "l1_lines": 32,
+        "line_size": 8,
+        "l1_associativity": 8,
+        "memory_issue_interval": 1,
+        "prefetch_mshr": 16,
+        "wb_limit": 16
+      },
+      "distances": [
+        1,
+        8,
+        16,
+        32
+      ]
+    },
+    {
+      "name": "constrained_8way",
+      "machine": {
+        "fetch_cycles": 1,
+        "load_hit_cycles": 1,
+        "store_cycles": 1,
+        "mem_latency": 40,
+        "prefetch_latency": 40,
+        "l1_lines": 32,
+        "line_size": 8,
+        "l1_associativity": 8,
+        "memory_issue_interval": 4,
+        "prefetch_mshr": 8,
+        "wb_limit": 16
+      },
+      "distances": [
+        1,
+        8,
+        16
+      ]
+    }
+  ],
+  "workloads": [
+    "agent_rag",
+    "embedding_lookup",
+    "kv_cache_append",
+    "mixed_read_write",
+    "phased_switch",
+    "random_read",
+    "real_bsearch",
+    "real_matmul",
+    "real_mergesort",
+    "sequential_read",
+    "strided_read",
+    "token_stream"
+  ]
+}
