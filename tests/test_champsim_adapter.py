@@ -261,3 +261,4 @@ def test_campaign_rejects_requested_as_accepted_traffic():
     assert summary["regularity_stride_vs_raw_stride"]["median_prefetch_issue_reduction"] == pytest.approx(0.5)
     assert summary["regularity_stride_vs_raw_stride"]["aggregate_dram_read_request_reduction"] == pytest.approx(0.2)
     assert summary["regularity_stride_vs_raw_stride"]["useful_prefetch_retention"] == 1.0
+    assert summary["regularity_stride_vs_raw_stride"]["maximum_relative_callback_count_difference"] == 0.0

@@ -47,6 +47,13 @@ a reason to change the gate or trace set. The +/-1% DRAM rule is a practical
 equivalence descriptor, not a formal TOST, because there are only nine
 program-level holdout units.
 
+Custom callback counts are diagnostic rather than a stream-equivalence gate:
+ChampSim defines the ROI at core retirement while cache callbacks for in-flight
+requests can cross the phase boundary. Exact equivalence is required between
+the custom gate-disabled module and official `ip_stride` on all architectural,
+cache, and memory output fields. Raw/gated callback-count differences are
+reported, not thresholded.
+
 ## Scope limitation
 
 This protocol evaluates one highest-weight SimPoint per program rather than

@@ -361,6 +361,15 @@ def _contrasts(records: list[RunRecord]) -> tuple[list[dict], dict]:
         control_llc_misses = sum(row["control_llc_prefetch_misses"] for row in comparison_rows)
         candidate_useful = sum(indexed[(trace, candidate_name)].useful_prefetch for trace in traces)
         control_useful = sum(indexed[(trace, control_name)].useful_prefetch for trace in traces)
+        decision_differences = []
+        for trace in traces:
+            candidate_record = indexed[(trace, candidate_name)]
+            control_record = indexed[(trace, control_name)]
+            if candidate_record.gate_decisions is not None and control_record.gate_decisions is not None:
+                scale = max(candidate_record.gate_decisions, control_record.gate_decisions, 1)
+                decision_differences.append(
+                    abs(candidate_record.gate_decisions - control_record.gate_decisions) / scale
+                )
         aggregate[f"{candidate_name}_vs_{control_name}"] = {
             "independent_trace_units": len(speedups),
             "geometric_mean_ipc_speedup": _geomean(speedups),
@@ -378,6 +387,7 @@ def _contrasts(records: list[RunRecord]) -> tuple[list[dict], dict]:
             "candidate_prefetch_accuracy": candidate_useful / candidate_issued if candidate_issued else None,
             "control_prefetch_accuracy": control_useful / control_issued if control_issued else None,
             "useful_prefetch_retention": candidate_useful / control_useful if control_useful else None,
+            "maximum_relative_callback_count_difference": max(decision_differences) if decision_differences else None,
         }
     return rows, aggregate
 
@@ -422,9 +432,10 @@ def _validate_records(records: list[RunRecord], simulation: int) -> None:
                 )
             if record.gate_decisions is None or record.gate_suppressed is None:
                 raise ValueError(f"missing module counters for {trace}/{record.config}")
-        decision_scale = max(raw.gate_decisions, gated.gate_decisions, 1)
-        if abs(raw.gate_decisions - gated.gate_decisions) / decision_scale > 0.001:
-            raise ValueError(f"raw/gated access streams diverged for {trace}")
+            if record.gate_decisions <= 0:
+                raise ValueError(f"empty module callback stream for {trace}/{record.config}")
+            if not 0 <= record.gate_suppressed <= record.gate_decisions:
+                raise ValueError(f"invalid suppression counter for {trace}/{record.config}")
 
 
 def _read_trace_list(path: Path) -> list[str]:
@@ -538,6 +549,10 @@ def main() -> None:
         "identity": identity,
         "champsim_tree_dirty": champsim_tree_dirty,
         "nncpu_tree_dirty": nncpu_tree_dirty,
+        "nncpu_tracked_tree_dirty": bool(
+            _git(REPOSITORY, "diff", "--name-only")
+            or _git(REPOSITORY, "diff", "--cached", "--name-only")
+        ),
         "warmup_instructions": args.warmup,
         "simulation_instructions": args.simulation,
         "configs": list(CONFIGS),
@@ -546,6 +561,10 @@ def main() -> None:
         "independent_unit": "one benchmark program",
         "host": {"platform": platform.platform(), "python": platform.python_version(), "cpu_count": os.cpu_count()},
         "records": len(records),
+        "raw_run_nncpu_revisions": sorted({
+            json.loads(metadata.read_text(encoding="utf-8"))["fingerprint"]["identity"].get("nncpu_revision", "unknown")
+            for metadata in (args.output / "raw").glob("*/*.metadata.json")
+        }),
     }
     (args.output / "manifest.json").write_text(
         json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
