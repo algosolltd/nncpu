@@ -1,0 +1,43 @@
+{
+  "artifact": "results/final_30",
+  "summary_values": [
+    {
+      "id": "random_baseline_cycles",
+      "workload": "random_read",
+      "config": "baseline",
+      "metric": "cycles_mean",
+      "value": 74083.0
+    },
+    {
+      "id": "random_nn_cycles",
+      "workload": "random_read",
+      "config": "nn",
+      "metric": "cycles_mean",
+      "value": 74083.0
+    },
+    {
+      "id": "sequential_nn_speedup",
+      "workload": "sequential_read",
+      "config": "nn",
+      "metric": "speedup_mean",
+      "value": 3.3253829760609652,
+      "atol": 1e-12
+    },
+    {
+      "id": "strided_nn_speedup",
+      "workload": "strided_read",
+      "config": "nn",
+      "metric": "speedup_mean",
+      "value": 9.116808749549499,
+      "atol": 1e-12
+    },
+    {
+      "id": "mixed_nn_speedup",
+      "workload": "mixed_read_write",
+      "config": "nn",
+      "metric": "speedup_mean",
+      "value": 6.1176698410214,
+      "atol": 1e-12
+    }
+  ]
+}

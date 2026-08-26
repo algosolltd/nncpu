@@ -17,19 +17,22 @@ are stored as:
 """
 
 import json
+import hashlib
+import importlib.metadata
 import math
 import os
 import platform
 import subprocess
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 from .benchmark import CONFIGS, run_workload, summarize
 from .cpu import MachineConfig
-from .prefetchers import make_prefetcher
+from .prefetchers import resolved_nn_kwargs
 from .visualize import plot_experiment_figures
 from .workloads import WORKLOADS, build_workloads
 from ._version import __version__ as nncpu_version
@@ -46,14 +49,52 @@ class ExperimentConfig:
     configs: tuple = CONFIGS
     runs: int = 10         # seeds; run r uses random_state = seed + r
     seed: int = 0
+    vary_workload_seed: bool = True
     machine: MachineConfig = field(default_factory=MachineConfig)
     nn_kwargs: dict = field(default_factory=dict)
     detail: bool = False   # also store per-instruction cycle series (large)
 
+    def __post_init__(self) -> None:
+        self.workloads = tuple(self.workloads)
+        self.configs = tuple(self.configs)
+        if not self.name or os.path.isabs(self.name) or os.path.basename(self.name) != self.name:
+            raise ValueError("experiment name must be a non-empty directory name")
+        if self.length <= 0:
+            raise ValueError("length must be > 0")
+        if self.runs <= 0:
+            raise ValueError("runs must be > 0")
+        if not self.workloads:
+            raise ValueError("at least one workload is required")
+        unknown_workloads = set(self.workloads) - set(WORKLOADS)
+        if unknown_workloads:
+            raise ValueError(f"unknown workloads: {sorted(unknown_workloads)}")
+        if not self.configs:
+            raise ValueError("at least one prefetch config is required")
+        from .baselines import SIM_CONFIGS
+        unknown_configs = set(self.configs) - set(SIM_CONFIGS)
+        if unknown_configs:
+            raise ValueError(f"unknown prefetch configs: {sorted(unknown_configs)}")
+        # Validate names and normalize all implicit defaults now, before a run.
+        resolved_nn_kwargs(self.nn_kwargs)
+
     def as_dict(self) -> dict:
         d = asdict(self)
         d["machine"] = self.machine.as_dict()
+        nn_settings = resolved_nn_kwargs(self.nn_kwargs)
+        # When not explicitly pinned, random_state is derived from
+        # ExperimentConfig.seed + run and must not be frozen to constructor
+        # default 42 in the persisted settings.
+        if "random_state" not in self.nn_kwargs:
+            nn_settings.pop("random_state", None)
+        d["nn_kwargs"] = json.loads(json.dumps(nn_settings))
         return d
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "ExperimentConfig":
+        """Load the exact configuration persisted in ``config.json``."""
+        values = dict(data)
+        values["machine"] = MachineConfig(**values.get("machine", {}))
+        return cls(**values)
 
     def describe(self) -> str:
         return (
@@ -100,28 +141,48 @@ def _dirty_working_tree() -> bool:
         return True
 
 
+def source_digest() -> str:
+    """SHA-256 of files that can affect simulation or experiment outputs."""
+    root = Path(__file__).resolve().parents[1]
+    paths = [root / "main.py", root / "requirements.txt", root / "pytest.ini"]
+    for directory in (root / "nncpu", root / "benchmarks", root / "webapp"):
+        paths.extend(directory.rglob("*.py"))
+        paths.extend(directory.rglob("*.html"))
+    digest = hashlib.sha256()
+    for path in sorted({p for p in paths if p.exists()}):
+        digest.update(str(path.relative_to(root)).encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def _installed_version(distribution: str) -> str:
+    try:
+        return importlib.metadata.version(distribution)
+    except importlib.metadata.PackageNotFoundError:
+        return "not-installed"
+
+
 def make_manifest(config: ExperimentConfig) -> dict:
     """Provenance record for one experiment run."""
-    import sklearn
-    from numpy import __version__ as np_version
-    from pandas import __version__ as pd_version
-    from matplotlib import __version__ as mpl_version
-    import seaborn as sns
-
+    config_json = json.dumps(config.as_dict(), sort_keys=True, separators=(",", ":"))
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "nncpu_version": nncpu_version,
         "git_revision": _git_revision(),
         "git_dirty": _dirty_working_tree(),
+        "source_sha256": source_digest(),
+        "config_sha256": hashlib.sha256(config_json.encode("utf-8")).hexdigest(),
         "python": platform.python_version(),
         "platform": platform.platform(),
         "cpu_count": os.cpu_count(),
         "versions": {
-            "numpy": np_version,
-            "pandas": pd_version,
-            "scikit_learn": sklearn.__version__,
-            "matplotlib": mpl_version,
-            "seaborn": sns.__version__,
+            "numpy": _installed_version("numpy"),
+            "pandas": _installed_version("pandas"),
+            "scikit_learn": _installed_version("scikit-learn"),
+            "matplotlib": _installed_version("matplotlib"),
+            "seaborn": _installed_version("seaborn"),
         },
     }
 
@@ -142,16 +203,22 @@ def run_experiment(config: ExperimentConfig, root: str = "results") -> Experimen
     Returns the :class:`ExperimentResult` with ``runs_df`` (tidy, per run)
     and ``summary_df`` (aggregated means + error bars).
     """
-    workloads = build_workloads(config.length)
-    workloads = {
-        name: insts for name, insts in workloads.items() if name in set(config.workloads)
-    }
-
+    # Snapshot provenance before writing into a tracked results directory.
+    manifest = make_manifest(config)
     rows = []
     for run in range(config.runs):
         seed = config.seed + run
+        workloads = build_workloads(
+            config.length, seed=seed if config.vary_workload_seed else None
+        )
+        workloads = {
+            name: insts
+            for name, insts in workloads.items()
+            if name in set(config.workloads)
+        }
         nn_kwargs = dict(config.nn_kwargs)
         nn_kwargs.setdefault("random_state", seed)
+        nn_kwargs = resolved_nn_kwargs(nn_kwargs)
         for workload_name, instructions in workloads.items():
             for cfg in config.configs:
                 report = run_workload(
@@ -162,6 +229,8 @@ def run_experiment(config: ExperimentConfig, root: str = "results") -> Experimen
                 row["seed"] = seed
                 row["workload"] = workload_name
                 row["config"] = cfg
+                if config.detail:
+                    row["inst_cycles"] = json.dumps(report.inst_cycles)
                 rows.append(row)
     runs_df = pd.DataFrame(rows)
 
@@ -177,7 +246,7 @@ def run_experiment(config: ExperimentConfig, root: str = "results") -> Experimen
         runs_df["speedup"] = runs_df["base_cycles"] / runs_df["cycles"]
 
     summary_df = aggregate(runs_df)
-    outdir = _write_experiment(config, runs_df, summary_df, root)
+    outdir = _write_experiment(config, runs_df, summary_df, root, manifest)
     return ExperimentResult(config=config, runs_df=runs_df, summary_df=summary_df, outdir=outdir)
 
 
@@ -213,6 +282,7 @@ def _write_experiment(
     runs_df: pd.DataFrame,
     summary_df: pd.DataFrame,
     root: str,
+    manifest: dict,
 ) -> str:
     outdir = os.path.join(root, config.name)
     figdir = os.path.join(outdir, "figures")
@@ -221,7 +291,7 @@ def _write_experiment(
     with open(os.path.join(outdir, "config.json"), "w") as f:
         json.dump(config.as_dict(), f, indent=2)
     with open(os.path.join(outdir, "manifest.json"), "w") as f:
-        json.dump(make_manifest(config), f, indent=2)
+        json.dump(manifest, f, indent=2)
 
     runs_df.to_csv(os.path.join(outdir, "runs.csv"), index=False)
 
@@ -238,7 +308,12 @@ def _write_experiment(
 
     figures = plot_experiment_figures(config, summary_df, figdir)
     with open(os.path.join(outdir, "README.txt"), "w") as f:
-        f.write(_readme_text(config, [os.path.relpath(p, outdir) for p in figures]))
+        f.write(_readme_text(
+            config,
+            [os.path.relpath(p, outdir) for p in figures],
+            manifest,
+            os.path.relpath(os.path.join(outdir, "config.json")),
+        ))
 
     return outdir
 
@@ -303,8 +378,10 @@ def summary_table(summary: pd.DataFrame) -> str:
     return "\n".join(lines)
 
 
-def _readme_text(config: ExperimentConfig, figures: list) -> str:
-    m = make_manifest(config)
+def _readme_text(
+    config: ExperimentConfig, figures: list, manifest: dict, config_path: str
+) -> str:
+    m = manifest
     body = [
         f"Experiment: {config.name}",
         f"Description: {config.description or '(none)'}",
@@ -327,5 +404,5 @@ def _readme_text(config: ExperimentConfig, figures: list) -> str:
     ]
     body += [f"  {f}" for f in figures]
     body.append("")
-    body.append("Reproduce:  python main.py --name " + config.name)
+    body.append(f"Reproduce:  python main.py --config {config_path}")
     return "\n".join(body) + "\n"

@@ -4,7 +4,7 @@ import json
 import os
 
 from nncpu.cpu import MachineConfig
-from nncpu.experiment import ExperimentConfig, _stats, run_experiment
+from nncpu.experiment import ExperimentConfig, _stats, run_experiment, source_digest
 
 EXPECTED_ARTIFACTS = (
     "config.json",
@@ -69,6 +69,8 @@ def test_manifest_has_provenance(tmp_path):
     assert manifest["git_revision"] not in ("", "unknown")
     assert {"numpy", "pandas", "scikit_learn", "matplotlib", "seaborn"} <= set(manifest["versions"])
     assert manifest["generated_at"]
+    assert manifest["source_sha256"] == source_digest()
+    assert len(manifest["config_sha256"]) == 64
 
 
 def test_config_json_is_round_trippable(tmp_path):
@@ -77,8 +79,65 @@ def test_config_json_is_round_trippable(tmp_path):
     with open(os.path.join(res.outdir, "config.json")) as f:
         saved = json.load(f)
     assert saved["machine"]["mem_latency"] == 40
-    assert saved["nn_kwargs"] == {"batch_size": 8, "hidden_layers": [16]}
+    assert saved["nn_kwargs"]["batch_size"] == 8
+    assert saved["nn_kwargs"]["hidden_layers"] == [16]
+    # Implicit behavior-changing defaults must be frozen into the artifact.
+    assert {"gate_scale", "gate_aggregator", "delta_cap", "feature_mode"} <= set(
+        saved["nn_kwargs"]
+    )
     assert saved["runs"] == 3
+    assert saved["vary_workload_seed"] is True
+    restored = ExperimentConfig.from_dict(saved)
+    assert restored.as_dict() == cfg.as_dict()
+
+
+def test_detail_flag_persists_per_instruction_cycles(tmp_path):
+    cfg = _tiny_cfg(name="detail", runs=1, detail=True)
+    res = run_experiment(cfg, root=str(tmp_path))
+    samples = json.loads(res.runs_df.iloc[0]["inst_cycles"])
+    assert len(samples) == cfg.length
+
+
+def test_invalid_experiment_configuration_fails_early():
+    import pytest
+
+    for overrides in (
+        {"runs": 0},
+        {"length": 0},
+        {"workloads": ()},
+        {"workloads": ("not_a_workload",)},
+        {"configs": ()},
+        {"name": "../escape"},
+    ):
+        with pytest.raises(ValueError):
+            _tiny_cfg(**overrides)
+
+
+def test_cli_reloads_exact_config_and_validates_machine(tmp_path):
+    from main import configure, parse_args
+
+    cfg = _tiny_cfg(name="reload", nn_kwargs={"gate_scale": None})
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps(cfg.as_dict()), encoding="utf-8")
+    restored = configure(parse_args(["--config", str(path)]))
+    assert restored.as_dict() == cfg.as_dict()
+
+    import pytest
+    with pytest.raises(ValueError):
+        configure(parse_args(["--line", "0"]))
+
+
+def test_random_workload_varies_across_runs_but_is_paired_by_config(tmp_path):
+    cfg = _tiny_cfg(
+        name="randomized",
+        runs=3,
+        workloads=("random_read",),
+        configs=("baseline", "stride"),
+    )
+    res = run_experiment(cfg, root=str(tmp_path))
+    baseline = res.runs_df[res.runs_df.config == "baseline"].sort_values("seed")
+    assert baseline.cycles.nunique() > 1
+    assert list(baseline.seed) == [1, 2, 3]
 
 
 def test_latex_table_contains_rows(tmp_path):

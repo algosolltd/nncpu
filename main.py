@@ -12,6 +12,7 @@ Usage:
 """
 
 import argparse
+import json
 import sys
 import time
 
@@ -24,6 +25,8 @@ from nncpu.benchmark import CONFIGS
 
 def parse_args(argv=None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="nncpu reproducible experiments")
+    parser.add_argument("--config", type=str, default=None,
+                        help="load an exact persisted ExperimentConfig JSON")
     parser.add_argument("--name", type=str, default=None,
                         help="experiment directory name under results/ "
                              "(default: timestamped)")
@@ -49,6 +52,8 @@ def parse_args(argv=None) -> argparse.Namespace:
     machine.add_argument("--line", type=int, default=None, help="cache line size in words")
     machine.add_argument("--latency", type=int, default=None,
                          help="DRAM latency on a miss (cycles)")
+    machine.add_argument("--prefetch-latency", type=int, default=None,
+                         help="prefetch completion latency; 0 preserves the paper model")
     machine.add_argument("--wb", type=int, default=None,
                          help="store-buffer limit (writes before a stall)")
     nn = parser.add_argument_group("neural network prefetcher")
@@ -65,15 +70,21 @@ def parse_args(argv=None) -> argparse.Namespace:
 
 def configure(args: argparse.Namespace) -> ExperimentConfig:
     """Translate CLI flags into an ExperimentConfig."""
-    machine = MachineConfig()
+    if args.config is not None:
+        with open(args.config, encoding="utf-8") as f:
+            return ExperimentConfig.from_dict(json.load(f))
+    machine_values = MachineConfig().as_dict()
     if args.l1 is not None:
-        machine.l1_lines = args.l1
+        machine_values["l1_lines"] = args.l1
     if args.line is not None:
-        machine.line_size = args.line
+        machine_values["line_size"] = args.line
     if args.latency is not None:
-        machine.mem_latency = args.latency
+        machine_values["mem_latency"] = args.latency
+    if args.prefetch_latency is not None:
+        machine_values["prefetch_latency"] = args.prefetch_latency
     if args.wb is not None:
-        machine.wb_limit = args.wb
+        machine_values["wb_limit"] = args.wb
+    machine = MachineConfig(**machine_values)
 
     nn_kwargs = {}
     if args.nn_batch is not None:

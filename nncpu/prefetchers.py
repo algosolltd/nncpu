@@ -16,6 +16,7 @@ valid answer meaning "don't prefetch now".
   random access -- the thing stride cannot do.
 """
 
+import inspect
 import warnings
 from collections import deque
 from typing import Optional
@@ -294,3 +295,23 @@ def make_prefetcher(name: str, **kwargs) -> Optional[Prefetcher]:
     if name == "nn":
         return NNPrefetcher(**kwargs)
     raise ValueError(f"Unknown prefetcher: {name!r}")
+
+
+def resolved_nn_kwargs(overrides: Optional[dict] = None) -> dict:
+    """Return every effective :class:`NNPrefetcher` constructor setting.
+
+    Persisting only caller overrides made old experiment artifacts depend on
+    whichever defaults happened to exist in a later checkout.  This helper is
+    deliberately derived from the live signature so adding a new knob cannot
+    silently escape the experiment manifest.
+    """
+    overrides = dict(overrides or {})
+    signature = inspect.signature(NNPrefetcher)
+    signature.bind_partial(**overrides)  # reject misspelled/unknown settings
+    resolved = {
+        name: parameter.default
+        for name, parameter in signature.parameters.items()
+        if parameter.default is not inspect.Parameter.empty
+    }
+    resolved.update(overrides)
+    return resolved

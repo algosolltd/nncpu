@@ -309,10 +309,10 @@ def main():
     # 3. gate threshold sweep
     scan_nn(
         "exp_threshold_sweep",
-        [(f"thr_{t}", dict(gate_threshold=float(t))) for t in thr],
+        [(f"abs_thr_{t}", dict(gate_threshold=float(t), gate_scale=None)) for t in thr],
         ("sequential_read", "strided_read", "random_read", "mixed_read_write"),
         CONFIGS, seeds_thr, length,
-        description="gate threshold in words",
+        description="absolute gate threshold in words (relative scaling disabled)",
     )
 
     # 4. MLP hyperparameter grid

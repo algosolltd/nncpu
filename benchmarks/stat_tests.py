@@ -20,6 +20,26 @@ RESULTS_ROOT = "results"
 COMPARISONS = (("nn", "baseline"), ("nn", "stride"), ("stride", "baseline"))
 
 
+def paired_cycles(group, a, b):
+    """Align two configurations by seed instead of trusting CSV row order."""
+    left = group[group.config == a][["seed", "cycles"]].rename(columns={"cycles": "a"})
+    right = group[group.config == b][["seed", "cycles"]].rename(columns={"cycles": "b"})
+    paired = left.merge(right, on="seed", how="inner", validate="one_to_one").sort_values("seed")
+    return paired["a"].to_numpy(), paired["b"].to_numpy()
+
+
+def holm_adjust(p_values):
+    """Family-wise Holm correction, preserving NaN for identical samples."""
+    adjusted = [float("nan")] * len(p_values)
+    valid = sorted((float(p), i) for i, p in enumerate(p_values) if not np.isnan(p))
+    running = 0.0
+    m = len(valid)
+    for rank, (p, original) in enumerate(valid):
+        running = max(running, min(1.0, (m - rank) * p))
+        adjusted[original] = running
+    return adjusted
+
+
 def wilcoxon_signed_rank(a, b):
     """Two-sided Wilcoxon signed-rank test on paired samples (normal approx).
 
@@ -70,11 +90,10 @@ def main():
           "comparison                 median nn   median other   mean diff    W+        z         p (two-sided)")
     for workload, g in runs.groupby("workload", sort=False):
         for (a, b) in COMPARISONS:
-            va = g[g.config == a]["cycles"].values
-            vb = g[g.config == b]["cycles"].values
-            n = min(len(va), len(vb))
-            w, z, p = wilcoxon_signed_rank(va[:n], vb[:n])
-            med_diff = np.median(va[:n] - vb[:n])
+            va, vb = paired_cycles(g, a, b)
+            n = len(va)
+            w, z, p = wilcoxon_signed_rank(va, vb)
+            med_diff = np.median(va - vb)
             p_label = "identical" if np.isnan(p) else f"{p:.3g}"
             rows.append({
                 "workload": workload, "comparison": f"{a}_vs_{b}",
@@ -85,13 +104,14 @@ def main():
                 "w_plus": w if not np.isnan(w) else None,
                 "z": z if not np.isnan(z) else None,
                 "p_value": p,
-                "significant_0.05": not np.isnan(p) and float(p) < 0.05,
                 "note": "identical (no paired difference)" if np.isnan(p) else "",
             })
             print(f"{workload:16s} {a+'_vs_'+b:20s} {np.median(va):9.0f} {np.median(vb):11.0f} "
                   f"{med_diff:+10.0f} {w:9.1f} {z:7.2f} {p_label:>10}")
 
     out = pd.DataFrame(rows)
+    out["p_value_holm"] = holm_adjust(out["p_value"].to_list())
+    out["significant_0.05_holm"] = out["p_value_holm"] < 0.05
     out.to_csv(os.path.join(outdir, "statistics.csv"), index=False)
     with open(os.path.join(outdir, "statistics.json"), "w") as f:
         json.dump(out.to_dict(orient="records"), f, indent=2)
