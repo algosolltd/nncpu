@@ -7,6 +7,8 @@ from nncpu.prefetchers import (
     ConfidenceGate,
     GatedStridePrefetcher,
     LookaheadPrefetcher,
+    RegularityFilteredPrefetcher,
+    RegularityGate,
     NNPrefetcher,
     StridePrefetcher,
     make_prefetcher,
@@ -95,6 +97,27 @@ def test_lookahead_extrapolates_without_changing_inner_prediction():
     assert predictions[-1] == 148
     with pytest.raises(ValueError):
         LookaheadPrefetcher(StridePrefetcher(), distance=0)
+
+
+def test_regularity_gate_accepts_modes_and_rejects_noise():
+    gate = RegularityGate(window=8, warmup=4, min_support=0.5)
+    for delta in (1, 8, 1, 8):
+        gate.observe(delta)
+    assert gate.is_open
+    for delta in (2, 3, 4, 5, 6, 7, 9, 10):
+        gate.observe(delta)
+    assert not gate.is_open
+
+
+def test_regularity_filter_keeps_training_inner_while_closed():
+    inner = StridePrefetcher()
+    filtered = RegularityFilteredPrefetcher(
+        inner, window=4, warmup=2, min_support=1.0
+    )
+    feed(filtered, [0, 1, 3, 6, 10])
+    assert not filtered.gate_open
+    predictions = feed(filtered, [20, 24, 28, 32, 36])
+    assert predictions[-1] == 40
 
 
 def test_nn_learns_sequential_stream():

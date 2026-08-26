@@ -18,17 +18,28 @@ import pandas as pd
 from .baselines import make_sim_prefetcher
 from .benchmark import run_workload, summarize
 from .cpu import MachineConfig
-from .prefetchers import LookaheadPrefetcher
+from .prefetchers import (
+    LookaheadPrefetcher,
+    RegularityFilteredPrefetcher,
+    StridePrefetcher,
+)
+from .baselines import BertiPrefetcher
 
 
 RESEARCH_CONFIGS = (
-    "baseline", "stride", "gated_stride", "berti", "gated_berti", "nn"
+    "baseline", "stride", "gated_stride", "regularity_stride", "berti",
+    "gated_berti", "regularity_berti", "nn"
 )
 MATCHED_COMPARISONS = (
     ("gated_stride", "stride"),
+    ("regularity_stride", "stride"),
     ("gated_berti", "berti"),
+    ("regularity_berti", "berti"),
     ("nn", "gated_stride"),
+    ("nn", "regularity_stride"),
 )
+REGULARITY_WINDOW = 16
+REGULARITY_MIN_SUPPORT = 0.35
 
 
 @dataclass(frozen=True)
@@ -72,7 +83,20 @@ def default_profiles() -> tuple[ResearchProfile, ...]:
 
 
 def _prefetcher(config: str, machine: MachineConfig, seed: int, distance: int):
-    predictor = make_sim_prefetcher(config, machine=machine, random_state=seed)
+    if config == "regularity_stride":
+        predictor = RegularityFilteredPrefetcher(
+            StridePrefetcher(),
+            window=REGULARITY_WINDOW,
+            min_support=REGULARITY_MIN_SUPPORT,
+        )
+    elif config == "regularity_berti":
+        predictor = RegularityFilteredPrefetcher(
+            BertiPrefetcher(),
+            window=REGULARITY_WINDOW,
+            min_support=REGULARITY_MIN_SUPPORT,
+        )
+    else:
+        predictor = make_sim_prefetcher(config, machine=machine, random_state=seed)
     if predictor is not None and distance > 1:
         predictor = LookaheadPrefetcher(predictor, distance=distance)
     return predictor

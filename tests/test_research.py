@@ -14,7 +14,10 @@ def test_gate_study_is_paired_and_reports_matched_controls():
 
     assert len(runs[runs.config == "baseline"]) == 2
     assert np.allclose(runs[runs.config == "baseline"].speedup, 1.0)
-    assert set(contrasts.candidate) == {"gated_stride", "gated_berti", "nn"}
+    assert set(contrasts.candidate) == {
+        "gated_stride", "regularity_stride", "gated_berti",
+        "regularity_berti", "nn",
+    }
     assert set(summary.distance) == {1, 2}
     assert {"wins", "losses", "ties", "p_value_holm"} <= set(contrasts.columns)
 

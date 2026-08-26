@@ -14,7 +14,7 @@ import json
 import os
 import subprocess
 from nncpu.experiment import source_digest
-from nncpu.research import default_profiles, run_gate_study
+from nncpu.research import RESEARCH_CONFIGS, default_profiles, run_gate_study
 from nncpu.traces import build_trace_workloads, read_trace
 from nncpu.workloads import build_workloads
 
@@ -44,20 +44,31 @@ def _git_revision() -> str:
     return result.stdout.strip() or "unknown"
 
 
-def run(output: str, seeds: int, length: int, include_real: bool = True) -> None:
+def run(
+    output: str,
+    seeds: int,
+    length: int,
+    include_real: bool = True,
+    seed_start: int = 0,
+    configs: tuple[str, ...] = RESEARCH_CONFIGS,
+) -> None:
     workloads = {
         seed: build_study_workloads(length, seed, include_real=include_real)
-        for seed in range(seeds)
+        for seed in range(seed_start, seed_start + seeds)
     }
     profiles = default_profiles()
-    runs, summary, contrasts = run_gate_study(workloads, profiles=profiles)
+    runs, summary, contrasts = run_gate_study(
+        workloads, profiles=profiles, configs=configs
+    )
     os.makedirs(output, exist_ok=True)
     runs.to_csv(os.path.join(output, "runs.csv"), index=False)
     summary.to_csv(os.path.join(output, "summary.csv"), index=False)
     contrasts.to_csv(os.path.join(output, "contrasts.csv"), index=False)
     config = {
         "seeds": seeds,
+        "seed_start": seed_start,
         "length": length,
+        "configs": configs,
         "include_real": include_real,
         "profiles": [
             {
@@ -94,14 +105,22 @@ def main() -> None:
     parser.add_argument("--output", default="results/research_gate")
     parser.add_argument("--seeds", type=int, default=30)
     parser.add_argument("--length", type=int, default=2000)
+    parser.add_argument("--seed-start", type=int, default=0)
+    parser.add_argument(
+        "--configs", default=",".join(RESEARCH_CONFIGS),
+        help="comma-separated matched-control subset",
+    )
     parser.add_argument("--quick", action="store_true")
     parser.add_argument("--no-real", action="store_true")
     args = parser.parse_args()
+    configs = tuple(part.strip() for part in args.configs.split(",") if part.strip())
     run(
         args.output,
         seeds=3 if args.quick else args.seeds,
         length=300 if args.quick else args.length,
         include_real=not args.no_real,
+        seed_start=args.seed_start,
+        configs=configs,
     )
 
 

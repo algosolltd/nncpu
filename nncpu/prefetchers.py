@@ -110,6 +110,39 @@ class ConfidenceGate:
             recent_error = sum(self._errors) / len(self._errors)
         return recent_error <= threshold
 
+
+class RegularityGate:
+    """Admit requests when recent deltas contain a sufficiently strong mode.
+
+    Unlike regression error, mode support treats occasional outliers as noise
+    while recognizing multimodal but repeated streams.  It needs only a
+    bounded delta history and no model output.
+    """
+
+    def __init__(self, window: int = 48, warmup: int = 8, min_support: float = 0.5):
+        if window <= 0:
+            raise ValueError("regularity window must be > 0")
+        if warmup < 0:
+            raise ValueError("regularity warmup must be >= 0")
+        if not 0.0 <= min_support <= 1.0:
+            raise ValueError("regularity min_support must be within [0, 1]")
+        self.warmup = warmup
+        self.min_support = min_support
+        self._deltas: "deque[int]" = deque(maxlen=window)
+
+    def observe(self, delta: int) -> None:
+        self._deltas.append(delta)
+
+    @property
+    def is_open(self) -> bool:
+        if len(self._deltas) < self.warmup:
+            return True
+        counts: dict[int, int] = {}
+        for delta in self._deltas:
+            counts[delta] = counts.get(delta, 0) + 1
+        support = max(counts.values(), default=0) / len(self._deltas)
+        return support >= self.min_support
+
 # Feature-ablation modes: which columns of the 6-D encoding the MLP sees.
 FEATURE_MODES = {
     "full": (0, 1, 2, 3, 4, 5),
@@ -190,6 +223,34 @@ class ConfidenceFilteredPrefetcher(Prefetcher):
         if not self._gate.is_open:
             return None
         return prediction
+
+    @property
+    def gate_open(self) -> bool:
+        return self._gate.is_open
+
+
+class RegularityFilteredPrefetcher(Prefetcher):
+    """Generic prefetch admission based only on observed delta regularity."""
+
+    name = "regularity_filtered"
+
+    def __init__(
+        self,
+        inner: Prefetcher,
+        window: int = 48,
+        warmup: int = 8,
+        min_support: float = 0.5,
+    ):
+        self.inner = inner
+        self._last_addr: Optional[int] = None
+        self._gate = RegularityGate(window, warmup, min_support)
+
+    def predict_next(self, addr: int, pc: int, opcode: str) -> Optional[int]:
+        if self._last_addr is not None:
+            self._gate.observe(addr - self._last_addr)
+        self._last_addr = addr
+        prediction = self.inner.predict_next(addr, pc, opcode)
+        return prediction if self._gate.is_open else None
 
     @property
     def gate_open(self) -> bool:
