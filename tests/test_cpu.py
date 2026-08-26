@@ -9,8 +9,10 @@ from nncpu.cpu import (
     L1_LINES,
     MEM_LATENCY,
     LOAD_HIT_CYCLES,
+    MachineConfig,
 )
 from nncpu.prefetchers import StridePrefetcher, NNPrefetcher, make_prefetcher
+from nncpu.baselines import NextLinePrefetcher
 from nncpu.workloads import build_workloads
 
 
@@ -87,6 +89,42 @@ def test_prefetch_hides_latency():
     rep = cpu.report()
     assert rep.prefetch_issued == 1
     assert rep.prefetch_used == 1
+
+
+def test_nonzero_prefetch_latency_cannot_grant_an_immediate_hit():
+    """A one-access-ahead prefetch is late when DRAM latency is 40 cycles.
+
+    This is the key external-validity check missing from the paper profile:
+    issuing the right address is insufficient unless it arrives in time.
+    """
+    cpu = CPU(
+        prefetcher=NextLinePrefetcher(),
+        machine=MachineConfig(prefetch_latency=MEM_LATENCY),
+    )
+    cpu.execute({"type": "LOAD", "address": 0x1000})
+    before = cpu.cycles
+    cpu.execute({"type": "LOAD", "address": 0x1008})
+
+    rep = cpu.report()
+    assert cpu.cycles - before == FETCH_CYCLES + MEM_LATENCY - 1
+    assert rep.hits == 0
+    assert rep.misses == 2
+    assert rep.prefetch_used == 1  # useful, but late
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"line_size": 0},
+        {"l1_lines": 0},
+        {"mem_latency": 0},
+        {"prefetch_latency": -1},
+        {"wb_limit": -1},
+    ],
+)
+def test_machine_rejects_physically_invalid_parameters(kwargs):
+    with pytest.raises(ValueError):
+        MachineConfig(**kwargs)
 
 
 def test_prefetchers_speedup_memory_workloads():

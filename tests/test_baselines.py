@@ -9,6 +9,8 @@ from nncpu.baselines import (
     make_sim_prefetcher,
 )
 from nncpu.cpu import LINE_SIZE
+from nncpu.cpu import MachineConfig
+from nncpu.benchmark import run_workload
 from nncpu.prefetchers import Prefetcher
 
 
@@ -16,6 +18,15 @@ def test_nextline_predicts_next_line():
     p = NextLinePrefetcher()
     for addr in (0x1000, 0x1008, 0x1010):
         assert p.predict_next(addr, 0, "LOAD") == addr + LINE_SIZE
+
+
+def test_nextline_uses_the_selected_machine_geometry():
+    machine = MachineConfig(line_size=16)
+    stream = [{"type": "LOAD", "address": 0x1000 + i * 16} for i in range(12)]
+    base = run_workload(stream, "baseline", machine=machine)
+    nxt = run_workload(stream, "nextline", machine=machine)
+    assert nxt.prefetch_issued > 0
+    assert nxt.cycles < base.cycles
 
 
 def test_make_sim_prefetcher_resolves_all():

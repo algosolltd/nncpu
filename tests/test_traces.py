@@ -8,11 +8,13 @@ from nncpu.traces import (
     TRACE_PATTERNS,
     build_trace_workloads,
     kv_cache_append,
+    read_champsim,
     read_trace,
     run_trace_battery,
     trace_recorder,
     write_trace,
 )
+from nncpu.benchmark import run_workload
 
 
 def test_write_read_roundtrip(tmp_path):
@@ -41,6 +43,22 @@ def test_reader_limit(tmp_path):
     assert len(read_trace(str(path), limit=7)) == 7
 
 
+def test_champsim_byte_addresses_are_normalized_and_stores_replay(tmp_path):
+    path = tmp_path / "champ.trace"
+    path.write_text("0 0x1000 0x1\n1 0x1008 0x2\n", encoding="utf-8")
+    parsed = read_champsim(str(path))
+
+    assert parsed == [
+        {"type": "LOAD", "address": 0x200},
+        {"type": "STORE", "address": 0x201, "value": 0},
+    ]
+    # Adjacent 8-byte words share an 8-word cache line and the STORE has the
+    # complete schema expected by CPU.execute.
+    report = run_workload(parsed, "baseline")
+    assert report.misses == 1
+    assert report.hits == 1
+
+
 def test_recorder_captures_real_accesses(tmp_path):
     path = tmp_path / "rec.trace"
     with trace_recorder(str(path)) as rec:
@@ -61,6 +79,16 @@ def test_patterns_are_deterministic_and_valid():
         for inst in a:
             assert inst["type"] in ("LOAD", "STORE")
             assert isinstance(inst["address"], int)
+
+
+def test_stochastic_trace_patterns_vary_by_seed_but_are_reproducible():
+    a = build_trace_workloads(600, seed=1)
+    b = build_trace_workloads(600, seed=2)
+    again = build_trace_workloads(600, seed=1)
+    assert a == again
+    assert a["embedding_lookup"] != b["embedding_lookup"]
+    assert a["agent_rag"] != b["agent_rag"]
+    assert a["token_stream"] == b["token_stream"]
 
 
 def test_kv_pattern_has_stores_and_loads():

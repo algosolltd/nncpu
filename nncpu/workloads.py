@@ -91,6 +91,20 @@ WORKLOADS = {
 }
 
 
-def build_workloads(length=2000) -> dict:
-    """Materialize every workload once so all configs run identical code."""
-    return {name: list(generator(length)) for name, generator in WORKLOADS.items()}
+def build_workloads(length=2000, seed=None) -> dict:
+    """Materialize workloads, optionally varying stochastic streams by seed.
+
+    Within one run every prefetch configuration receives the exact same
+    materialized instructions.  Across experiment runs, supplying ``seed``
+    produces independent deterministic random/phased streams rather than
+    merely changing neural-network initialization.
+    """
+    workloads = {
+        "sequential_read": list(sequential_read(length)),
+        "strided_read": list(strided_read(length)),
+        "mixed_read_write": list(mixed_read_write(length)),
+        "random_read": list(random_read(length, seed=seed if seed is not None else 0x12345678)),
+        "phased_switch": list(phased_switch(length, seed=seed if seed is not None else 0x12345678)),
+        "arithmetic_mix": list(arithmetic_mix(length)),
+    }
+    return workloads

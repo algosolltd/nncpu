@@ -21,7 +21,7 @@ def run_workload(
     """Execute one instruction stream under one prefetch config."""
     if prefetcher is None:
         from .baselines import make_sim_prefetcher
-        prefetcher = make_sim_prefetcher(config, **nn_kwargs or {})
+        prefetcher = make_sim_prefetcher(config, machine=machine, **nn_kwargs or {})
     cpu = CPU(prefetcher=prefetcher, machine=machine)
     for instruction in instructions:
         cpu.execute(instruction)

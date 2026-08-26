@@ -59,9 +59,33 @@ class MachineConfig:
     load_hit_cycles: int = LOAD_HIT_CYCLES
     store_cycles: int = STORE_CYCLES
     mem_latency: int = MEM_LATENCY
+    # Zero preserves the paper's explicitly idealized "free L1 fill" model.
+    # Set this to ``mem_latency`` (or another measured value) to test whether a
+    # prefetch is early enough to be useful rather than granting an instant hit.
+    prefetch_latency: int = 0
     l1_lines: int = L1_LINES
     line_size: int = LINE_SIZE
     wb_limit: int = WB_LIMIT
+
+    def __post_init__(self) -> None:
+        positive = {
+            "mem_latency": self.mem_latency,
+            "l1_lines": self.l1_lines,
+            "line_size": self.line_size,
+        }
+        non_negative = {
+            "fetch_cycles": self.fetch_cycles,
+            "load_hit_cycles": self.load_hit_cycles,
+            "store_cycles": self.store_cycles,
+            "prefetch_latency": self.prefetch_latency,
+            "wb_limit": self.wb_limit,
+        }
+        for name, value in positive.items():
+            if value <= 0:
+                raise ValueError(f"{name} must be > 0, got {value}")
+        for name, value in non_negative.items():
+            if value < 0:
+                raise ValueError(f"{name} must be >= 0, got {value}")
 
     def as_dict(self) -> dict:
         """Plain, JSON-serializable view for manifests."""
@@ -70,6 +94,7 @@ class MachineConfig:
             "load_hit_cycles": self.load_hit_cycles,
             "store_cycles": self.store_cycles,
             "mem_latency": self.mem_latency,
+            "prefetch_latency": self.prefetch_latency,
             "l1_lines": self.l1_lines,
             "line_size": self.line_size,
             "wb_limit": self.wb_limit,
@@ -208,6 +233,7 @@ class CPU:
 
         self._report = CPUReport()
         self._prefetched_lines: set = set()
+        self._pending_prefetches: dict[int, int] = {}
 
     # -- public API --------------------------------------------------------
 
@@ -229,7 +255,7 @@ class CPU:
         elif itype == "LOAD":
             outcome = self._load(instruction["address"])
         else:  # STORE
-            outcome = self._store(instruction["address"], instruction["value"])
+            outcome = self._store(instruction["address"], instruction.get("value", 0))
 
         self._report.inst_cycles.append(self.cycles - start_cycles)
         self._report.cycles = self.cycles
@@ -250,17 +276,19 @@ class CPU:
         return {"type": itype, "result": a / b}
 
     def _load(self, addr: int) -> dict:
-        hit = self._touch(addr)
-        self.cycles += self.machine.load_hit_cycles if hit else self.machine.mem_latency
-        self._report.mem_cycles += self.machine.load_hit_cycles if hit else self.machine.mem_latency
+        hit, miss_latency = self._touch(addr)
+        latency = self.machine.load_hit_cycles if hit else miss_latency
+        self.cycles += latency
+        self._report.mem_cycles += latency
         value = self.data.get(addr, _DEFAULT_MEMORY_VALUE)
         self._after_mem_access(addr, "LOAD")
         return {"type": "LOAD", "address": addr, "value": value}
 
     def _store(self, addr: int, value: int) -> dict:
-        hit = self._touch(addr)
-        self.cycles += self.machine.store_cycles if hit else self.machine.mem_latency
-        self._report.mem_cycles += self.machine.store_cycles if hit else self.machine.mem_latency
+        hit, miss_latency = self._touch(addr)
+        latency = self.machine.store_cycles if hit else miss_latency
+        self.cycles += latency
+        self._report.mem_cycles += latency
         self.data[addr] = value
         self.write_buffer.push(addr)
         stall = self.write_buffer.excess()
@@ -271,8 +299,15 @@ class CPU:
         self._after_mem_access(addr, "STORE")
         return {"type": "STORE", "address": addr, "value": value}
 
-    def _touch(self, addr: int) -> bool:
-        """Shared cache access, accounting hits/misses and prefetch use."""
+    def _touch(self, addr: int) -> tuple[bool, int]:
+        """Access one line and return ``(hit, miss_latency)``.
+
+        A demand that catches an in-flight prefetch is still a cache miss, but
+        it waits only for the request's remaining latency.  This makes
+        prefetch timeliness observable while retaining the paper's legacy
+        behavior when ``prefetch_latency == 0``.
+        """
+        self._retire_prefetches(self.cycles)
         if self.cache.contains(addr):
             self.cache.touch(addr)
             self._report.hits += 1
@@ -280,26 +315,65 @@ class CPU:
             if line in self._prefetched_lines:
                 self._report.prefetch_used += 1
                 self._prefetched_lines.discard(line)
-            return True
+            return True, 0
         self._report.misses += 1
+
+        line = self.cache.line_of(addr)
+        ready = self._pending_prefetches.get(line)
+        if ready is not None:
+            remaining = max(0, ready - self.cycles)
+            self._pending_prefetches.pop(line, None)
+            self._retire_prefetches(ready)
+            # The demand consumes this request at completion; insert it after
+            # other requests that completed during the wait so it cannot be
+            # spuriously evicted before the waiting demand observes it.
+            evicted = self.cache.insert(addr)
+            if evicted is not None:
+                self._prefetched_lines.discard(evicted)
+            self._report.prefetch_used += 1
+            self._prefetched_lines.discard(line)
+            return False, remaining
+
+        # Other in-flight requests may complete while this demand is stalled.
+        self._retire_prefetches(self.cycles + self.machine.mem_latency)
         evicted = self.cache.insert(addr)
         if evicted is not None:
             self._prefetched_lines.discard(evicted)
-        return False
+        return False, self.machine.mem_latency
 
     def _prefetch(self, addr: int) -> None:
-        """Bring ``addr``'s line in for free (idle DRAM bandwidth)."""
+        """Issue a prefetch, immediately or with configured latency."""
         line = self.cache.line_of(addr)
         if line in self.cache.lines:
             self.cache.touch(addr)
             return
-        if line in self._prefetched_lines:
+        if line in self._prefetched_lines or line in self._pending_prefetches:
             return
+        self._report.prefetch_issued += 1
+        if self.machine.prefetch_latency:
+            self._pending_prefetches[line] = self.cycles + self.machine.prefetch_latency
+            return
+        self._insert_prefetched_line(line)
+
+    def _insert_prefetched_line(self, line: int) -> None:
+        """Complete a prefetch and allocate its line in L1."""
+        addr = line * self.machine.line_size
         evicted = self.cache.insert(addr)
         if evicted is not None:
             self._prefetched_lines.discard(evicted)
         self._prefetched_lines.add(line)
-        self._report.prefetch_issued += 1
+
+    def _retire_prefetches(self, up_to_cycle: int) -> None:
+        """Complete outstanding requests whose ready cycle has elapsed."""
+        ready = sorted(
+            (cycle, line)
+            for line, cycle in self._pending_prefetches.items()
+            if cycle <= up_to_cycle
+        )
+        for _, line in ready:
+            self._pending_prefetches.pop(line, None)
+            if line not in self.cache.lines:
+                self._insert_prefetched_line(line)
 
     def _after_mem_access(self, addr: int, opcode: str) -> None:
         if self.prefetcher is None:

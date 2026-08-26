@@ -30,9 +30,14 @@ class NextLinePrefetcher(Prefetcher):
 
     name = "nextline"
 
+    def __init__(self, line_size: int = LINE_SIZE):
+        if line_size <= 0:
+            raise ValueError("line_size must be > 0")
+        self.line_size = line_size
+
     def predict_next(self, addr: int, pc: int, opcode: str) -> Optional[int]:
         del pc, opcode
-        return addr + LINE_SIZE  # next line down the address space
+        return addr + self.line_size  # next line down the address space
 
 
 class BertiPrefetcher(Prefetcher):
@@ -92,14 +97,16 @@ def prefetcher_configs() -> tuple:
     return SIM_CONFIGS
 
 
-def make_sim_prefetcher(name: str, **kwargs) -> Optional[Prefetcher]:
+def make_sim_prefetcher(name: str, machine=None, **kwargs) -> Optional[Prefetcher]:
     """Resolve a prefetcher for any of the five experiment configs."""
     from .prefetchers import make_prefetcher
 
     if name in ("baseline", "none"):
         return None
     if name == "nextline":
-        return NextLinePrefetcher()
+        return NextLinePrefetcher(
+            line_size=machine.line_size if machine is not None else LINE_SIZE
+        )
     if name == "berti":
         return BertiPrefetcher()
     return make_prefetcher(name, **kwargs)

@@ -32,6 +32,7 @@ from typing import Iterator, List, Optional
 from .workloads import REGION
 
 OP_TYPES = ("LOAD", "STORE", "ADD", "MUL", "DIV")
+WORD_BYTES = 8
 
 # -- I/O ----------------------------------------------------------------------
 
@@ -79,9 +80,13 @@ def read_trace(path: str, limit: Optional[int] = None) -> List[dict]:
     return out
 
 
-def read_champsim(path: str, limit: Optional[int] = None) -> List[dict]:
+def read_champsim(
+    path: str, limit: Optional[int] = None, word_bytes: int = WORD_BYTES
+) -> List[dict]:
     """Read the classic ChampSim trace format (one line per access:
     ``0 <addr> <pc>`` = load, ``1 <addr> <pc>`` = store)."""
+    if word_bytes <= 0:
+        raise ValueError("word_bytes must be > 0")
     out = []
     with open(path, encoding="utf-8") as f:
         for raw in f:
@@ -90,11 +95,15 @@ def read_champsim(path: str, limit: Optional[int] = None) -> List[dict]:
                 continue
             try:
                 is_write = int(parts[0]) != 0
-                addr = int(parts[1], 16)
+                # ChampSim-style addresses are byte addresses; the simulator's
+                # cache geometry is expressed in words.
+                addr = int(parts[1], 16) // word_bytes
             except ValueError:
                 continue
-            out.append({"type": "STORE" if is_write else "LOAD",
-                        "address": addr})
+            inst = {"type": "STORE" if is_write else "LOAD", "address": addr}
+            if is_write:
+                inst["value"] = 0
+            out.append(inst)
             if limit and len(out) >= limit:
                 break
     return out
@@ -202,8 +211,16 @@ TRACE_PATTERNS = {
 }
 
 
-def build_trace_workloads(length: int = 2000) -> dict:
-    return {name: list(gen(length)) for name, gen in TRACE_PATTERNS.items()}
+def build_trace_workloads(length: int = 2000, seed: Optional[int] = None) -> dict:
+    """Build paired trace workloads, optionally varying stochastic patterns."""
+    embedding_seed = 0x5EED if seed is None else seed
+    agent_seed = 0xACED if seed is None else seed
+    return {
+        "kv_cache_append": list(kv_cache_append(length)),
+        "embedding_lookup": list(embedding_lookup(length, seed=embedding_seed)),
+        "agent_rag": list(agent_rag(length, seed=agent_seed)),
+        "token_stream": list(token_stream(length)),
+    }
 
 
 # -- run a trace battery and store an experiment -------------------------------
@@ -226,15 +243,17 @@ def run_trace_battery(root: str = "results",
     from .benchmark import run_workload, summarize
     from .experiment import aggregate
 
+    vary_workloads = workloads is None
     if workloads is None:
-        workloads = build_trace_workloads(length)
+        workloads = build_trace_workloads(length, seed=0)
     if configs is None:
         from .benchmark import CONFIGS
         configs = CONFIGS
 
     rows = []
     for run in range(seeds):
-        for wname, insts in workloads.items():
+        run_workloads = build_trace_workloads(length, seed=run) if vary_workloads else workloads
+        for wname, insts in run_workloads.items():
             for cfg in configs:
                 rep = run_workload(insts, cfg,
                                    nn_kwargs={"random_state": run})

@@ -13,11 +13,13 @@ Writes results/traces/real_*.trace (and ChampSim-format copies).
 import os
 import random
 
-from nncpu.traces import trace_recorder, write_trace, read_champsim
+from nncpu.traces import WORD_BYTES, trace_recorder, read_champsim
 
 BASE = 0x20000
 OUT_DIR = "results/traces"
-W = 8  # bytes per element
+# Native trace files use word addresses.  ChampSim export converts them to
+# byte addresses explicitly, avoiding the old 8x cache-line mismatch.
+W = 1
 
 
 def _load(rec, base, idx):
@@ -29,7 +31,8 @@ def _store(rec, base, idx, value=None):
 
 
 def capture_mergesort(rec, n=512):
-    arr = [random.Random(7).randrange(1000) for _ in range(n)]
+    rng = random.Random(7)
+    arr = [rng.randrange(1000) for _ in range(n)]
     aux = [0] * n
     base = BASE
 
@@ -41,14 +44,20 @@ def capture_mergesort(rec, n=512):
         i, j = lo, mid + 1
         for k in range(lo, hi + 1):
             if i > mid:
+                _load(rec, base + n * W, j)
                 arr[k] = aux[j]; j += 1
             elif j > hi:
-                arr[k] = aux[i]; i += 1
-            elif aux[i] <= aux[j]:
+                _load(rec, base + n * W, i)
                 arr[k] = aux[i]; i += 1
             else:
-                arr[k] = aux[j]; j += 1
-            _load(rec, base + n * W, k)
+                # The comparison reads both candidates.  Record those actual
+                # indices, not the output index k.
+                _load(rec, base + n * W, i)
+                _load(rec, base + n * W, j)
+                if aux[i] <= aux[j]:
+                    arr[k] = aux[i]; i += 1
+                else:
+                    arr[k] = aux[j]; j += 1
             _store(rec, base, k)
 
     def msort(lo, hi):
@@ -77,6 +86,7 @@ def capture_matmul(rec, n=32):
             for j in range(n):
                 bkj = b[k * n + j]
                 _load(rec, baseB, k * n + j)
+                _load(rec, baseC, i * n + j)
                 c[i * n + j] += aik * bkj
                 _store(rec, baseC, i * n + j)
 
@@ -84,7 +94,8 @@ def capture_matmul(rec, n=32):
 def capture_bsearch(rec, n=1024):
     arr = [2 * i for i in range(n)]
     base = BASE
-    targets = [random.Random(11).choice(arr) for _ in range(64)]
+    rng = random.Random(11)
+    targets = [rng.choice(arr) for _ in range(64)]
     for t in targets:
         lo, hi = 0, n - 1
         while lo <= hi:
@@ -102,7 +113,8 @@ def to_champsim_format(insts):
     lines = []
     for inst in insts:
         op = "1" if inst["type"] == "STORE" else "0"
-        lines.append(f"{op} {inst['address']:#x} 0x0")
+        byte_address = inst["address"] * WORD_BYTES
+        lines.append(f"{op} {byte_address:#x} 0x0")
     return "\n".join(lines) + "\n"
 
 
