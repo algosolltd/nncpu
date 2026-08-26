@@ -66,5 +66,14 @@ The module trains throughout warm-up, but its custom decision, suppression,
 and issue counters cover only the measured region of interest. ChampSim's JSON
 statistics are also ROI-only.
 
+Verify a completed primary artifact from its raw JSON and logs with:
+
+```bash
+python /path/to/nncpu/champsim/verify_results.py \
+  --results /path/to/results \
+  --champsim /path/to/ChampSim \
+  --trace-dir /path/to/traces
+```
+
 The C++ adapter files retain the Apache-2.0 notice required by the ChampSim
 source they derive from. The rest of nncpu remains MIT licensed.

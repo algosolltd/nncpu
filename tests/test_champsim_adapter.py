@@ -22,7 +22,9 @@ def _load(name: str, path: Path):
 
 
 campaign = _load("nncpu_champsim_campaign", CHAMPSIM / "campaign.py")
+sys.modules["campaign"] = campaign
 cost = _load("nncpu_champsim_cost", CHAMPSIM / "hardware_cost.py")
+verifier = _load("nncpu_champsim_verifier", CHAMPSIM / "verify_results.py")
 
 
 def test_raw_and_regularized_configs_are_matched_except_gate_and_name():
@@ -232,6 +234,23 @@ def test_campaign_statistics_treat_traces_as_units():
     assert campaign._exact_sign_p([1.1] * 11) == pytest.approx(2 / 2**11)
     assert campaign._exact_sign_p([1.1, 0.9]) == 1.0
     assert campaign._geomean([2.0, 0.5]) == pytest.approx(1.0)
+
+
+def test_frozen_external_predictions_are_machine_checkable():
+    summary = {
+        "regularity_stride_vs_raw_stride": {
+            "aggregate_prefetch_issue_reduction": 0.3,
+            "aggregate_l2c_prefetch_miss_reduction": 0.1,
+            "aggregate_llc_prefetch_miss_reduction": 0.08,
+            "candidate_prefetch_accuracy": 0.15,
+            "control_prefetch_accuracy": 0.10,
+            "useful_prefetch_retention": 0.9,
+            "aggregate_dram_read_request_reduction": 0.001,
+            "geometric_mean_ipc_speedup": 0.995,
+        }
+    }
+
+    assert all(verifier._prediction_checks(summary).values())
 
 
 def test_campaign_rejects_requested_as_accepted_traffic():
