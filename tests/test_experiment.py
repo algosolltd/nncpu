@@ -138,6 +138,7 @@ def test_random_workload_varies_across_runs_but_is_paired_by_config(tmp_path):
     baseline = res.runs_df[res.runs_df.config == "baseline"].sort_values("seed")
     assert baseline.cycles.nunique() > 1
     assert list(baseline.seed) == [1, 2, 3]
+    assert baseline.speedup.tolist() == [1.0, 1.0, 1.0]
 
 
 def test_latex_table_contains_rows(tmp_path):

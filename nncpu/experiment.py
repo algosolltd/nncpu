@@ -234,15 +234,21 @@ def run_experiment(config: ExperimentConfig, root: str = "results") -> Experimen
                 rows.append(row)
     runs_df = pd.DataFrame(rows)
 
-    # speedup is measured against the *mean* baseline cycles per workload
+    # Pair every configuration with the baseline from the same materialized
+    # workload seed.  Dividing by a cross-seed mean biases speedup whenever a
+    # stochastic workload changes baseline cycles between runs.
     if "baseline" in runs_df.config.values:
-        base_mean = (
+        paired_baseline = (
             runs_df[runs_df.config == "baseline"]
-            .groupby("workload")["cycles"]
-            .mean()
-            .rename("base_cycles")
+            [["run", "seed", "workload", "cycles"]]
+            .rename(columns={"cycles": "base_cycles"})
         )
-        runs_df = runs_df.merge(base_mean, on="workload", how="left")
+        runs_df = runs_df.merge(
+            paired_baseline,
+            on=["run", "seed", "workload"],
+            how="left",
+            validate="many_to_one",
+        )
         runs_df["speedup"] = runs_df["base_cycles"] / runs_df["cycles"]
 
     summary_df = aggregate(runs_df)

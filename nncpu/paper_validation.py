@@ -216,6 +216,13 @@ def validate_paper_artifact(
     passed, detail = _compare_summary(runs, summary)
     report.add("summary_derived_from_raw", passed, detail)
 
+    baseline_speedups = runs[runs.config == "baseline"]["speedup"]
+    report.add(
+        "paired_speedups",
+        bool(np.allclose(baseline_speedups, 1.0, rtol=0, atol=0)),
+        "baseline speedup is exactly 1 for every seed",
+    )
+
     random_rows = runs[runs.workload == "random_read"]
     base = random_rows[random_rows.config == "baseline"][["seed", "cycles", "hit_rate"]]
     nn = random_rows[random_rows.config == "nn"][["seed", "cycles", "hit_rate"]]

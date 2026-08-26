@@ -265,9 +265,17 @@ def run_trace_battery(root: str = "results",
                 rows.append(row)
     runs_df = pd.DataFrame(rows)
     if "baseline" in runs_df.config.values:
-        base_mean = (runs_df[runs_df.config == "baseline"]
-                     .groupby("workload")["cycles"].mean().rename("base_cycles"))
-        runs_df = runs_df.merge(base_mean, on="workload", how="left")
+        paired_baseline = (
+            runs_df[runs_df.config == "baseline"]
+            [["run", "seed", "workload", "cycles"]]
+            .rename(columns={"cycles": "base_cycles"})
+        )
+        runs_df = runs_df.merge(
+            paired_baseline,
+            on=["run", "seed", "workload"],
+            how="left",
+            validate="many_to_one",
+        )
         runs_df["speedup"] = runs_df["base_cycles"] / runs_df["cycles"]
     summary_df = aggregate(runs_df)
 
