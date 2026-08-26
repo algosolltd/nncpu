@@ -175,6 +175,11 @@ def _run_one(
     simulation: int,
     identity: dict,
 ) -> RunRecord:
+    # ChampSim executes with its checkout as cwd, so every cross-checkout path
+    # passed on its command line must be absolute.
+    champsim = champsim.resolve()
+    output = output.resolve()
+    trace = trace.resolve()
     run_dir = output / "raw" / _slug(trace)
     run_dir.mkdir(parents=True, exist_ok=True)
     json_path = run_dir / f"{config_name}.json"
@@ -458,6 +463,11 @@ def main() -> None:
     args = parser.parse_args()
     if args.warmup < 0 or args.simulation <= 0 or args.jobs <= 0:
         parser.error("warmup must be non-negative; simulation and jobs must be positive")
+    args.champsim = args.champsim.resolve()
+    args.trace_dir = args.trace_dir.resolve()
+    args.output = args.output.resolve()
+    if args.trace_list is not None:
+        args.trace_list = args.trace_list.resolve()
     binary = args.champsim / "bin" / "champsim"
     if not binary.is_file():
         parser.error(f"ChampSim binary not found: {binary}")

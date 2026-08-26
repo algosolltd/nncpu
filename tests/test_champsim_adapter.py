@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -178,6 +179,53 @@ def test_campaign_parser_uses_roi_and_custom_gate_counters(tmp_path):
     assert record.gate_decisions == 80
     assert record.gate_suppressed == 9
     assert record.module_issued == 10
+
+
+def test_runner_passes_absolute_output_and_trace_paths(tmp_path, monkeypatch):
+    checkout = tmp_path / "ChampSim"
+    binary = checkout / "bin" / "champsim"
+    binary.parent.mkdir(parents=True)
+    binary.write_text("fake")
+    trace = tmp_path / "trace.champsimtrace.xz"
+    trace.write_bytes(b"trace")
+    output = tmp_path / "relative-output"
+    relative_output = Path(os.path.relpath(output, ROOT))
+    observed = {}
+
+    def fake_run(command, **kwargs):
+        observed["command"] = command
+        observed["cwd"] = kwargs["cwd"]
+        json_path = Path(command[command.index("--json") + 1])
+        json_path.parent.mkdir(parents=True, exist_ok=True)
+        json_path.write_text(json.dumps([{
+            "name": "Simulation",
+            "roi": {
+                "cores": [{"instructions": 100, "cycles": 100}],
+                "cpu0_L1D": {
+                    "LOAD": {"miss": [0]}, "prefetch requested": 0,
+                    "prefetch issued": 0, "useful prefetch": 0,
+                    "useless prefetch": 0,
+                },
+            },
+        }]))
+        return subprocess.CompletedProcess(command, 0, stdout=(
+            "NNCPU_REGULARITY roi_decisions=10 roi_suppressed=0 roi_issued=0 "
+            "gate_enabled=false window=16 support_percent=35 degree=3\n"
+        ))
+
+    monkeypatch.setattr(campaign.subprocess, "run", fake_run)
+    identity = {
+        "traces": {trace.name: {"sha256": "trace-hash"}},
+        "configs": {"raw_stride": "config-hash"},
+    }
+    campaign._run_one(
+        checkout, relative_output, trace, "raw_stride", 0, 100, identity
+    )
+
+    json_argument = Path(observed["command"][observed["command"].index("--json") + 1])
+    assert json_argument.is_absolute()
+    assert Path(observed["command"][-1]).is_absolute()
+    assert Path(observed["cwd"]).is_absolute()
 
 
 def test_campaign_statistics_treat_traces_as_units():
