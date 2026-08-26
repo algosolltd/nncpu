@@ -3,8 +3,8 @@ Description: canonical 30 seeds, length 2000
 
 final_30: 5 workloads x 3 configs x 30 seeds, length=2000, 32 L1 lines x 8 words, MEM_LATENCY=40 cycles, store-buffer limit=16
 
-Generated: 2026-08-26T10:45:51+00:00
-Git revision: 98eaefd055cedd88788b84aa54eaa6d0ce644cff (dirty: False)
+Generated: 2026-08-26T10:47:24+00:00
+Git revision: 98cdd71123e46d0214d3c7ad88dde80a87863877 (dirty: False)
 Python: 3.14.6  platform: Linux-7.1.5-arch1-2-x86_64-with-glibc2.44
 Library versions: numpy=2.5.2, pandas=3.0.5, scikit_learn=1.9.0, matplotlib=3.11.1, seaborn=0.13.2
 

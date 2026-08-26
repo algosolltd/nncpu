@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-08-26T10:45:51+00:00",
+  "generated_at": "2026-08-26T10:47:24+00:00",
   "nncpu_version": "3.0.0",
-  "git_revision": "98eaefd055cedd88788b84aa54eaa6d0ce644cff",
+  "git_revision": "98cdd71123e46d0214d3c7ad88dde80a87863877",
   "git_dirty": false,
-  "source_sha256": "245af2165cbec2261e124f914a476c2a8c601f5d3c048b9fbe4c6fac0f2bcc65",
+  "source_sha256": "762ec0cff11d95280c3e8ad1ab611eaf5bc042118b9458f320238c4ac7a10f88",
   "config_sha256": "09bc0c10cd182c564ef55b2c91d1e593d93cb58bd5005d3ae4140859ec4b5a22",
   "python": "3.14.6",
   "platform": "Linux-7.1.5-arch1-2-x86_64-with-glibc2.44",
