@@ -1,16 +1,18 @@
 {
-  "generated_at": "2026-08-23T19:16:05+00:00",
+  "generated_at": "2026-08-26T10:45:51+00:00",
   "nncpu_version": "3.0.0",
-  "git_revision": "3cc5f615a1ae93816d8f351c502223bb7a04eef2",
-  "git_dirty": true,
-  "python": "3.12.3",
-  "platform": "Windows-11-10.0.26200-SP0",
-  "cpu_count": 8,
+  "git_revision": "98eaefd055cedd88788b84aa54eaa6d0ce644cff",
+  "git_dirty": false,
+  "source_sha256": "245af2165cbec2261e124f914a476c2a8c601f5d3c048b9fbe4c6fac0f2bcc65",
+  "config_sha256": "09bc0c10cd182c564ef55b2c91d1e593d93cb58bd5005d3ae4140859ec4b5a22",
+  "python": "3.14.6",
+  "platform": "Linux-7.1.5-arch1-2-x86_64-with-glibc2.44",
+  "cpu_count": 24,
   "versions": {
-    "numpy": "2.5.1",
-    "pandas": "2.3.3",
-    "scikit_learn": "1.8.0",
-    "matplotlib": "3.10.7",
+    "numpy": "2.5.2",
+    "pandas": "3.0.5",
+    "scikit_learn": "1.9.0",
+    "matplotlib": "3.11.1",
     "seaborn": "0.13.2"
   }
 }

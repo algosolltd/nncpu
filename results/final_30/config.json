@@ -16,22 +16,32 @@
   ],
   "runs": 30,
   "seed": 0,
+  "vary_workload_seed": true,
   "machine": {
     "fetch_cycles": 1,
     "load_hit_cycles": 1,
     "store_cycles": 1,
     "mem_latency": 40,
+    "prefetch_latency": 0,
     "l1_lines": 32,
     "line_size": 8,
     "wb_limit": 16
   },
   "nn_kwargs": {
     "batch_size": 16,
+    "feature_size": 6,
     "hidden_layers": [
       32
     ],
     "learning_rate": 0.01,
-    "mlp_backend": "numpy"
+    "mlp_backend": "numpy",
+    "confidence_gate": true,
+    "gate_threshold": 8.0,
+    "gate_scale": 0.5,
+    "gate_aggregator": "median",
+    "delta_cap": 16,
+    "feature_mode": "full",
+    "warmup_epochs": 4
   },
   "detail": false
 }
