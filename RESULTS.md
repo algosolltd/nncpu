@@ -13,15 +13,20 @@ python benchmarks/stat_tests.py             # paired significance tests
 
 | Workload | Baseline | Stride | NN (95% CI) | Hit base→stride→nn |
 |---|---|---|---|---|
-| sequential_read | 13 750 | 3.40x (1.000) | **3.33x ± 0.03** (0.998) | 0.88 → 1.00 → 1.00 |
-| strided_read | 82 000 | 19.92x (0.999) | **9.12x ± 1.53** (0.933) | 0.00 → 1.00 → 0.93 |
-| mixed_read_write | 43 984 | 8.69x (0.999) | **6.12x ± 0.65** (0.971) | 0.50 → 1.00 → 0.97 |
-| random_read | 74 083 | 0.98x (0.082) | **1.00x (0.102)** | 0.10 → 0.08 → 0.10 |
-| phased_switch | 43 819 | 1.10x (0.541) | **1.03x (0.508)** | 0.49 → 0.54 → 0.51 |
+| sequential_read | 13 750 | 3.40x (1.000) | **3.305x ± 0.013** (0.998) | 0.88 → 1.00 → 1.00 |
+| strided_read | 82 000 | 19.92x (0.999) | **9.103x ± 0.537** (0.933) | 0.00 → 1.00 → 0.93 |
+| mixed_read_write | 43 984 | 8.69x (0.999) | **1.003x** (0.502) | 0.50 → 1.00 → 0.50 |
+| random_read | 73 952 | 0.978x (0.082) | **1.00028x ± 0.00017** (0.103) | 0.10 → 0.08 → 0.10 |
+| phased_switch | 43 629 | 1.093x (0.540) | **1.103x ± 0.002** (0.544) | 0.49 → 0.54 → 0.54 |
 
-**Take-away**: the NN closes most of stride's gap on regular streams and —
-unlike stride — is **never worse than "no prefetch"** (random_read: stride
-0.98x and hit rate *below* baseline; NN exactly at baseline on all 30 seeds).
+**Verified take-away**: the NN helps sequential, strided and phased traffic,
+but the current relative gate almost completely disables it on mixed traffic.
+On `random_read` it is slightly better on average, yet it is not universally
+safe: 18/30 runs exactly match baseline and 1/30 is 39 cycles worse.
+
+The paper profile assumes instantaneous prefetch completion. With
+`prefetch_latency=40`, the verifier measures only about 1.02x on the smooth
+streams; the larger numbers above are therefore an ideal-timeliness bound.
 
 ### Figures
 
@@ -54,14 +59,15 @@ absolute address feature **helps a lot** — `delta_only` and `no_abs_addr`
 **MLP backend**: numpy is **~9x faster** than sklearn end-to-end with
 statistically identical hit rates (0.93–0.99).
 
-**Gate threshold**: too strict (4 words) disables prefetching on
-mixed (1.01x); 8–64 keeps NN≈baseline on random and NN≥threshold-fold on
-smooth streams.
+The old threshold and feature-ablation directories predate source hashing and
+are retained as exploratory data, not verified paper evidence. The corrected
+absolute-threshold sweep disables relative scaling explicitly; regenerate it
+before drawing conclusions from those tables.
 
-**Significance (Wilcoxon signed-rank, paired by seed, α=0.05):** NN beats
-baseline on every workload (p<10⁻⁵ except random, distributions identical);
-stride beats NN on smooth streams (p<10⁻⁵) but **loses to baseline on
-random_read** (p<10⁻⁷). Full table in `results/final_30/statistics.csv`.
+**Significance:** Wilcoxon comparisons are aligned by seed and corrected as
+one family with Holm's method. The NN differs from baseline on every workload,
+including random (`p_holm=0.008`), while the per-seed safety counterexample is
+reported separately. Full output is in `results/final_30/statistics.csv`.
 
 ## ML / agent traces (`results/exp_traces`, 8 seeds)
 
@@ -70,38 +76,36 @@ embeddings, RAG agent loop, token stream):
 
 | trace | baseline | stride | NN (median gate) |
 |---|---|---|---|
-| token_stream (sequential) | 1.00x | 3.40x | **3.26x** |
+| token_stream (sequential) | 1.00x | 3.40x | **3.20x** |
 | agent_rag (phased) | 1.00x | 2.14x | **1.95x** |
-| embedding_lookup (sparse) | 1.00x | 1.88x | **1.64x** |
+| embedding_lookup (sparse) | 1.00x | 1.88x | **1.62x** |
 | kv_cache_append (seq+gather) | 1.00x | 1.97x | **1.33x** |
 
 **Robustness fix (issue #2 partial):** switching the confidence gate from
 mean to **median** error and **clamping training deltas to ±16 words** lets
 the NN handle sparse *gather* streams without being tripped ("everything
 looks unpredictable"). Ablation (`results/exp_gate_aggregators`): embedding
-1.00x→1.64x, kv_cache 1.00x→1.33x, agent_rag 1.84x→1.95x, with **no
-regression** on random_read (NN still exactly = baseline) or the smooth
-streams.
+1.00x→1.64x, kv_cache 1.00x→1.33x, agent_rag 1.84x→1.95x. These archived
+numbers do not establish a no-regression guarantee.
 
 ## Published baselines, modeled in-simulator (`results/exp_baselines*`)
 
-Next-Line and Berti (best-offset) implemented faithfully in
-`nncpu/baselines.py`, compared on synthetic + patterns + **real algorithm
+Simplified Next-Line and delta-Markov (`berti`) models in
+`nncpu/baselines.py`, compared on synthetic + patterns + instrumented algorithm
 traces** (merge sort, matmul, binary search from `capture_real_trace.py`):
 
 | workload | baseline | stride | nextline | berti | NN |
 |---|---|---|---|---|---|
-| token_stream | 1.00x | 3.40x | 3.40x | 3.40x | 3.26x |
+| token_stream | 1.00x | 3.40x | 3.40x | 3.40x | 3.20x |
 | random_read | 1.00x | 0.98x | 1.00x | 0.98x | **1.00x** |
-| real_matmul | 1.00x | 9.63x | **11.24x** | 8.46x | 1.00x |
-| real_mergesort | 1.00x | 6.86x | 8.68x | **9.04x** | 1.00x |
+| real_bsearch | 1.00x | 0.80x | 0.98x | **1.43x** | 1.00x |
+| real_matmul | 1.00x | 1.65x | **1.72x** | 1.04x | 1.00x |
+| real_mergesort | 1.00x | 1.15x | **1.43x** | 1.22x | 1.00x |
 | kv_cache_append | 1.00x | 1.97x | 1.00x | **2.76x** | 1.33x |
 
-Honest interpretation: on dense large-stride computation (matmul,
-mergesort) the classic mechanisms are near-optimal and the NN's gate is
-too conservative (threshold 8 words ≪ the 32-word row stride) — a clear
-limitation, not hidden.  The NN's clear win stays the unpredictable case:
-on `random_read` its hit rate stays exactly at baseline (no pollution)
-while stride and berti drop below (0.98x, hit 0.081/0.082).
+Correcting byte/word address units removes the previously reported 9--11x
+real-trace speedups. Next-line remains best on matmul and merge sort, while the
+NN remains essentially inactive. These are instrumented algorithm traces, not
+native SPEC/ChampSim execution traces.
 
 Full raw data lives under `results/` (see `README.md` for the layout).

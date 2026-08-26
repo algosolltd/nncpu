@@ -3,8 +3,8 @@
 Runs the 5 configs on a *curated* mix of workloads where the contrast is
 clearest:
 
-  random_read      -- nothing is predictable: ONLY the NN stays exactly at
-                      1.00x (never pollutes); stride/berti/nextline degrade.
+  random_read      -- nothing is predictable: the NN usually gates off while
+                      stride/berti/nextline can degrade.
   token_stream     -- pure sequential: NN ~ stride/nextline/berti.
   agent_rag        -- phased RAG loop: NN follows stride closely.
   embedding_lookup -- sparse gathers: NN learns the in-row delta.

@@ -105,20 +105,20 @@ Full run (2000 instructions per workload):
 | Workload          | Speedup vs no-prefetch (cycles) | Hit rate (base→stride→nn) |
 |-------------------|-------------------------------:|----------------------------|
 | sequential_read   | stride 3.4x / nn 3.3x          | 0.88 → 1.00 → 1.00         |
-| strided_read      | stride 19.9x / nn 9.8x         | 0.00 → 1.00 → 0.94         |
-| mixed_read_write  | stride 8.7x / nn 7.0x          | 0.50 → 1.00 → 0.98         |
+| strided_read      | stride 19.9x / nn 9.1x         | 0.00 → 1.00 → 0.93         |
+| mixed_read_write  | stride 8.7x / nn 1.0x          | 0.50 → 1.00 → 0.50         |
 | random_read       | stride 0.98x / nn 1.00x        | 0.10 → 0.08 → 0.10         |
 | arithmetic_mix    | 1.00x (no memory)              | —                           |
 
 Takeaways:
 
-* on smooth streams the NN closes most of the gap to the (near-optimal)
-  stride heuristic while adapting automatically;
+* on sequential/strided streams the NN closes part of the gap to stride;
+  the current relative gate is too conservative on mixed read/write;
 * on unpredictable traffic stride *hurts* (pollutes the cache, hit rate
-  drops below baseline) whereas the NN's confidence gate backs off and
-  matches baseline exactly;
-* NN speedups are real and reproducible because they come from the
-  simulated cycle model, not from comparing Python call overhead.
+  drops below baseline) whereas the NN usually backs off; one of the 30
+  verified random seeds still regresses by 39 cycles;
+* NN speedups are reproducible within the declared simulated cycle model;
+  `verify_paper` separately shows their sensitivity to prefetch timeliness.
 
 ## Quick start
 

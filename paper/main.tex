@@ -50,23 +50,20 @@ never used, evict useful ones, and can end up \emph{slower than not
 prefetching at all}.  We study a small streaming neural predictor that
 learns the \emph{next address delta} and pairs it with a
 \emph{confidence gate} that simply stops prefetching when the stream looks
-unlearnable.  In a fully reproducible, cycle-accounting L1 simulator
-(configuration and provenance persisted with every run; 30 seeds per
-number), the learned prefetcher recovers 33--98\% of stride's margin above
-no-prefetch on smooth streams while being the \emph{only} configuration
-that never drops below the no-prefetch baseline on random traffic (1.000x
-on every
-seed; stride and best-offset degrade to 0.98x while polluting the cache).
-A median-error gate and clamped training deltas make it robust to the
-mixed streams found in real serving workloads---LLM KV-cache appends,
-sparse embeddings, agent-RAG loops.  We report a full ablation set and
-quantify, without hiding it, the remaining limitation on dense
-large-stride compute.
+unlearnable. In a reproducible latency-accounting L1 simulator
+(configuration, source hash and provenance persisted with every run; 30
+seeds per number), the learned prefetcher recovers 43--96\% of stride's
+margin on sequential and strided streams, but almost none on mixed
+read/write under the current relative gate. On random traffic it averages
+1.00028x while stride degrades to 0.978x; importantly, one of 30 NN runs is
+39 cycles worse than no-prefetch, disproving a universal no-harm guarantee.
+When prefetch completion is changed from instantaneous to one modeled DRAM
+latency, the large idealized speedups collapse to approximately 1.02x.
 
-\textbf{Takeaway:} a learned prefetcher is not needed to be \emph{faster}
----heuristics own that---but to be \emph{safe}.  The confidence gate
-converts a sometimes-harmful unit into one that is never worse than no
-prefetching, on any stream, with no tuning.
+\textbf{Takeaway:} the confidence gate reduces pollution on noisy streams,
+but neither the implementation nor the evidence establishes universal
+safety. The reported large speedups are internally reproducible upper bounds
+under an explicit zero-latency prefetch assumption.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -115,18 +112,16 @@ error, scaled to the stream's characteristic delta magnitude, that
 suppresses prefetching when the stream is not learnable
 (Sec.~\ref{sec:gate});
 \item a fully reproducible, cycle-accounting simulator with four prefetch
-baselines, six synthetic workloads, four ML/agent patterns, and three real
-algorithm traces, plus a free dashboard for inspection
+baselines, six synthetic workloads, four ML/agent patterns, and three
+instrumented algorithm traces, plus a dashboard for inspection
 (Sec.~\ref{sec:rep}).
 \end{itemize}
 
-Our central result is the \emph{safety property}: on random traffic the
-learned prefetcher reproduces ``no prefetching'' exactly, on every one of
-30 seeds (1.000x, identical hit rate), the only configuration of the five
-to never degrade below baseline, while recovering 46--98\% of stride's
-benefit on regular streams.  We also report, honestly, the configuration
-where the gate is too conservative and the heuristics win by a wide
-margin (dense large-stride compute, Sec.~\ref{sec:traces}).
+Our central empirical result is narrower than a safety theorem: on random
+traffic the learned prefetcher averages 1.00028x over no-prefetch, while
+stride averages 0.978x. Eighteen NN runs reproduce no-prefetch exactly,
+eleven improve slightly, and one regresses by 39 cycles. On sequential and
+strided traffic it recovers 96\% and 43\% of stride's margin respectively.
 
 \section{Simulator model}
 \label{sec:model}
@@ -141,8 +136,10 @@ conclusion.
 One cycle fetches an instruction.  The L1 is fully associative,
 $32$ lines of $8$ words each, LRU.  A load/store that hits costs one
 cycle; a miss fetches a whole line from memory and stalls the core for
-$L=40$ cycles.  A prefetch inserts a line at zero cycle cost, modeling
-otherwise-idle DRAM bandwidth.  Stores are write-through: they update the
+$L=40$ cycles. In the canonical profile a prefetch inserts a line at zero
+cycle cost, an ideal timeliness upper bound. The validation suite also uses a
+40-cycle asynchronous prefetch latency; a demand that catches an in-flight
+request waits for the remaining latency and counts as a miss. Stores are write-through: they update the
 cache immediately and park a write-back in a 16-entry store buffer that
 only stalls the core on overflow.  Arithmetic latencies are $1/3/8$
 cycles for ADD/MUL/DIV.
@@ -166,9 +163,10 @@ dominate and prefetching has room to win.  Synthetic (deterministic):
 \texttt{kv\_cache\_append} (sequential KV writes plus periodic attention
 gathers), \texttt{embedding\_lookup} (dense rows reached by sparse
 indices), \texttt{agent\_rag} (long context scans plus scattered
-retrieval bursts), and a trivial \texttt{token\_stream}.  Real algorithm
-traces (merge sort, row-major matrix multiply, binary search) are captured
-from real executing code element-by-element and replayed verbatim.
+retrieval bursts), and a trivial \texttt{token\_stream}. Instrumented
+algorithm traces (merge sort, row-major matrix multiply, binary search)
+record conceptual word addresses element-by-element; they are controlled
+traces, not native ChampSim/SPEC instruction traces.
 
 \section{The learned prefetcher}
 \label{sec:method}
@@ -217,16 +215,16 @@ occasional far access; a mean would declare a KV-cache stream
 scale lets the gate open on large-stride streams (a $32$-word delta with
 0 error is ``confident''), whereas a fixed threshold cannot tell a
 $32$-word stride from noise.  On pure noise the error equals the stride
-magnitude, the ratio is $\approx 1 > 0.5$, and the gate closes---we
-reproduce ``do not prefetch'' exactly.  The predictor keeps training while
+magnitude, the ratio is expected to exceed 0.5 and the gate usually closes.
+The predictor keeps training while
 the gate is closed, so it re-opens when regularity returns
 (Sec.~\ref{sec:phases}).
 
 \subsection{Baselines}
 Four mechanisms share the same inference interface.
-\emph{Next-line} always fetches address$+$line.  \emph{PC-stride}
-predicts last$+$previous-delta.  \emph{Best-offset/spatial} (our
-\emph{berti} config, in the style of \cite{bingo}) keeps a bounded
+\emph{Next-line} always fetches address$+$line. Our global \emph{stride}
+model predicts last$+$previous-delta; it is not indexed by static PC. The
+delta-Markov (\emph{berti}) configuration keeps a bounded
 first-order Markov table of which delta follows the current delta and
 prefetches the mode, LRU-evicted.  None has a gate: that is precisely the
 contrast we quantify.
@@ -313,22 +311,18 @@ identical to the no-prefetch run step by step, and $C_P(r)=C_\varnothing(r)$.
 prediction is wrong, the only possible way for $C_P(r)<C_\varnothing(r)$ to
 fail is eviction: a wrong prefetch line occupies a slot that a later
 access needed.  Where prefetch accuracy is perfect, or the cache has free
-capacity, $C_P(r)\le C_\varnothing(r)$ always.  Empirically the median gate
-closes on \emph{all 30} seeds of the random workload, realizing the equality
-of (1) rather than relying on (2).
+capacity, $C_P(r)\le C_\varnothing(r)$ always.
 \end{enumerate}
 
-These statements are deliberately modest: this paper claims an
-\emph{empirically universal} safety property, not a capacity-analysis
-theorem.  Proposition (2) makes explicit that the only conceivable harm
-channel is cache eviction, which is exactly the channel the gate
-eliminates by closing on unlearnable streams.
+These statements do not establish that the gate closes soon enough on every
+unlearnable stream. The observed random counterexample shows that warm-up
+prefetches can still evict a useful line before the gate closes.
 
 \paragraph{Overhead.} Table~\ref{tab:overhead} summarizes the predictor's
-cost.  257 parameters fit well inside a cache line; the replay buffer is
-$\approx2$\,KB; a prediction in pure NumPy costs $\approx26\,\mu$s, orders
-of magnitude below the 40-cycle stall it aims to hide.  Unbounded growth
-is avoided by LRU-bounding the replay and the gate window.
+cost. 257 parameters and a bounded replay make the software model small. A
+prediction in pure NumPy costs $\approx26\,\mu$s of host wall time; that is
+not comparable to 40 simulated hardware cycles and is excluded from the
+cycle totals. A hardware power/area/latency model remains future work.
 
 \begin{table}[t]\centering\small
 \caption{Resource footprint of the learned predictor}
@@ -353,28 +347,22 @@ determinism   & per-seed & same result per seed \\
 \subsection{Setup}
 The core machine is described in Sec.~\ref{sec:model}; the learned model
 uses the default hyper-parameters (16-sample batch, 32 hidden, lr$=10^{-2}$,
-64-sample replay, median gate with adaptive threshold).  The NN is seeded
-per run ($\mathrm{random\_state}=\mathrm{seed}$), baseline/stride are
-deterministic.  Unless stated otherwise, results are means over a number
-of independent seeds reported in each table.
+64-sample replay, median gate with adaptive threshold). The NN and the
+stochastic random/phased workloads are seeded per run; every configuration
+within a seed receives the same materialized stream. Deterministic workloads
+vary only through NN initialization.
 
 \subsection{Main results}
 \label{sec:main}
-Table~\ref{tab:main} reports the canonical 30-seed runs.  On
-\texttt{random\_read}, over 30 independent seeds the learned prefetcher
-produces the same cycles and hit rate as no prefetching (1.000x,
-hit 0.102); across all seeds the gate disabled prefetching.  Under the
-stride and best-offset configurations the same workload completes in more
-cycles (0.98x) with a lower hit rate (0.081--0.082).  On smooth streams the
-fraction of stride's margin above no-prefetch that the NN recovers is 97\%
-on sequential (3.33 vs.\ 3.40), 43\% on strided (9.12 vs.\ 19.92),
-67\% on mixed (6.12 vs.\ 8.69), and 33\% on phases (1.03 vs.\ 1.10).  A
-paired Wilcoxon
-signed-rank test over the 30 seeds gives, for every entry, the direction
-of the difference: the NN is above no-prefetch on every workload
-($p{<}10^{-5}$) except random, where the two distributions are identical;
-stride is above the NN on smooth streams ($p{<}10^{-5}$); and stride is
-below no-prefetch on random ($p{<}10^{-7}$) (Fig.~\ref{fig:stats}).
+Table~\ref{tab:main} reports the canonical 30-seed runs. On random traffic
+the NN averages 1.00028x and stride 0.978x. The NN is exactly equal to
+baseline in 18 runs, better in 11, and 39 cycles worse in one. On sequential
+and strided streams it recovers 96\% and 43\% of stride's margin; on mixed
+read/write the relative gate closes almost completely (1.003x). On the
+phased workload it slightly exceeds stride (1.103x vs. 1.093x). Wilcoxon
+tests are paired explicitly by seed and Holm-corrected as one family; the NN
+and baseline random distributions differ ($p_{Holm}=0.008$), but that mean
+improvement is not a per-run guarantee.
 
 \begin{figure}[t]\centering
 \includegraphics[width=.95\linewidth]{t_stats.png}
@@ -388,10 +376,8 @@ positive only on random\_read.}
 
 \begin{table*}[t]\centering
 \caption{Canonical run, mean over 30 seeds.  cyc = total cycles, hit = L1
-hit rate; the NN is shown as mean$\pm$95\%\,CI.  Bold marks the strictly
-best configuration in a row.  On random\_read the gated NN's cycle count
-equals the no-prefetch run on all seeds; the stride and best-offset
-configurations complete in more cycles.}
+hit rate; the NN is shown as mean$\pm$95\%\,CI. Speedup is paired against
+the baseline from the same workload seed.}
 \small
 \begin{tabular}{lcccccc}
 \toprule
@@ -400,38 +386,32 @@ Workload & \multicolumn{2}{c}{baseline} & \multicolumn{2}{c}{stride} &
 \cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}
  & cyc & hit & cyc & sp{\tiny(x)} & cyc & sp{\tiny(x)}\\
 \midrule
-sequential\_read   & 13\,750 & 0.875 & 4\,039 & 3.40 & 4\,135$\pm$14  & $3.33\pm.03$   \\
-strided\_read      & 82\,000 & 0.000 & 4\,117 & 19.92& 9\,235$\pm$535 & $9.12\pm1.53$  \\
-mixed\_read\_write & 43\,984 & 0.500 & 5\,062 & 8.69 & 7\,277$\pm$309 & $6.12\pm.65$   \\
-random\_read       & 74\,083 & 0.102 & 75\,604& 0.98 & 74\,083$\pm$0  & $\mathbf{1.000\pm.000}$\\
-phased\_switch     & 43\,819 & 0.489 & 39\,763& 1.10 & 42\,384$\pm$75 & $1.03\pm.01$   \\
+sequential\_read   & 13\,750 & 0.875 & 4\,039 & 3.404 & 4\,161$\pm$16  & $3.305\pm.013$ \\
+strided\_read      & 82\,000 & 0.000 & 4\,117 & 19.917& 9\,240$\pm$528 & $9.103\pm.537$ \\
+mixed\_read\_write & 43\,984 & 0.500 & 5\,062 & 8.689 & 43\,867$\pm$0 & $1.003\pm.000$ \\
+random\_read       & 73\,952 & 0.103 & 75\,625& 0.978 & 73\,931$\pm$35 & $1.00028\pm.00017$\\
+phased\_switch     & 43\,629 & 0.492 & 39\,906& 1.093 & 39\,565$\pm$72 & $1.103\pm.002$ \\
 \bottomrule
 \end{tabular}
 \label{tab:main}
 \end{table*}
 
-\noindent\emph{\textbf{Takeaway.}} The learned prefetcher is not the
-fastest prefetcher; it is the \emph{safe} one.  On every seed of
-\texttt{random\_read} it behaves exactly like no prefetching, which is the
-one guarantee none of the four classic mechanisms can offer.
+\noindent\emph{\textbf{Takeaway.}} The gate reduces average random-stream
+pollution but does not provide a no-harm guarantee. Its effectiveness is
+also workload-dependent: it helps phasing but suppresses useful mixed-stream
+prefetches under the current relative threshold.
 
 \subsection{The phasing (dynamic) workload}
 \label{sec:phases}
-We also report a workload that alternates 200-instruction predictable
-(sequential) and noisy (random) phases, to observe whether the gate
-switches state during execution.  Mean per-phase hit rates over 10 seeds
-are, in the predictable phases, 0.883 (baseline), 0.995 (stride), 0.922
-(NN); in the noisy phases, 0.104 (baseline), 0.085 (stride), 0.105 (NN).
-In the noisy phases the stride configuration's hit rate is below the
-no-prefetch baseline's; the NN's is equal to it, i.e.\ the gate was
-closed on those phases and the NN issued no prefetch.  The aggregate
-end-to-end effect on this mixed workload is a 1.10x speedup for stride and
-1.03x for the NN over no-prefetch (Table~\ref{tab:main}).
+The phased workload alternates predictable sequential regions and noisy LCG
+regions. In the verified end-to-end runs the NN reaches 1.103x versus
+1.093x for stride, with mean hit rates 0.544 and 0.540. The archived
+per-phase figure predates source hashing and is treated as exploratory until
+regenerated by the evidence pipeline.
 
 \begin{figure}[t]\centering
 \includegraphics[width=.9\linewidth]{speedup.png}
-\caption{Speedup vs.\ no-prefetch (30 seeds, error bars = 1 std).  The NN
-tracks stride on regular streams and rests exactly at 1.0x on random.}
+\caption{Speedup vs.\ no-prefetch (30 seeds, error bars = 1 std).}
 \label{fig:speedup}
 \end{figure}
 
@@ -445,39 +425,39 @@ stride drops \emph{below} baseline.  Right: total cycles on a log scale
 
 \subsection{ML/agent patterns and real traces}
 \label{sec:traces}
-Table~\ref{tab:traces} compares all configs on ML/agent patterns and real
-algorithm traces.  The NN wins head-to-head in two representative cases:
-on \texttt{random\_read} it beats stride and best-offset (both 0.98x);
-on \texttt{kv\_cache\_append} it beats next-line (1.33x vs.\ 1.00x) and
-even approaches stride (1.97x).  The matmul and mergesort rows expose our
-documented limitation: with a 32-word row stride the gate's relative
-budget is still too tight, so the NN stays near 1.0x while next-line and
-best-offset reach 9--11x.  This is the honest denominator of the paper:
-classic mechanisms remain the right tool for dense, large-stride,
-regular compute.
+Table~\ref{tab:traces} compares simplified models on ML/agent patterns and
+corrected instrumented algorithm traces. Fixing the former byte/word address
+mismatch reduces the previously reported 9--11x real-trace results to
+1.04--1.72x. Next-line is best on matmul and merge sort; the delta-Markov
+model is best on binary search. The NN remains near 1.0x on all three.
 
 \begin{table}[t]\centering\small
-\caption{Prefetcher comparisons on ML/agent patterns and real algorithm
+\caption{Prefetcher comparisons on ML/agent patterns and instrumented algorithm
 traces, mean over 8 seeds.  Bold marks the head-to-head wins discussed in
 the text (best value)\\}
 \begin{tabular}{lccccc}
 \toprule
 workload & stride & nextline & bestoff & NN \\
 \midrule
-token\_stream      & 3.40x & 3.40x & 3.40x & 3.26x \\
+token\_stream      & 3.40x & 3.40x & 3.40x & 3.20x \\
 agent\_rag         & 2.14x & 2.14x & 2.13x & 1.95x \\
-embedding\_lookup  & 1.88x & 2.01x & 1.90x & 1.64x \\
+embedding\_lookup  & 1.88x & 2.01x & 1.90x & 1.62x \\
 kv\_cache\_append  & 1.97x & 1.00x & 2.76x & 1.33x \\
 random\_read       & 0.98x & 1.00x & 0.98x & \textbf{1.000x}\\
-real\_matmul       & 9.63x & 11.24x& 8.46x & 1.00x \\
-real\_mergesort    & 6.86x & 8.68x & 9.04x & 1.00x \\
+real\_bsearch      & 0.80x & 0.98x & 1.43x & 1.00x \\
+real\_matmul       & 1.65x & 1.72x & 1.04x & 1.00x \\
+real\_mergesort    & 1.15x & 1.43x & 1.22x & 1.00x \\
 \bottomrule
 \end{tabular}
 \label{tab:traces}
 \end{table}
 
-\section{Ablations and robustness}
+\section{Exploratory ablations}
 \label{sec:abl}
+
+The ablation directories below predate source/config hashing and were not used
+by the canonical verifier. We retain them to document hypothesis generation,
+not as validated evidence for the main claims.
 
 \subsection{Feature ablation}
 Table~\ref{tab:feat} (strided and mixed workloads) is the cleanest
@@ -516,7 +496,7 @@ Replacing the mean with the \emph{median} recent error and clamping
 training deltas to $\pm16$ words is what fixes gather-heavy streams
 (Table~\ref{tab:gate}): embedding $1.00{\rightarrow}1.64$x,
 kv-cache $1.00{\rightarrow}1.33$x, agent-RAG $1.84{\rightarrow}1.95$x,
-with no regression on random (still exactly baseline) or smooth streams.
+with no mean regression in the archived random experiment.
 The adaptive (relative) threshold in (\ref{eq:gate}) additionally keeps
 the gate open for large predicted strides (Table~\ref{tab:gate},
 Fig.~\ref{fig:gate}).
@@ -549,9 +529,9 @@ A grid over batch size (8/16/32), hidden width (16/32/64), and learning
 rate ($10^{-3}$/1e-2) shows the defaults near-optimal; more warm-up epochs
 on the first fit weakly help (8.2$\rightarrow$8.7x on strided).  Sweeping
 L1 capacity (16--64 lines), line size (4--16 words), and DRAM latency
-(20--80 cycles) preserves every qualitative conclusion, including the
-safety property on random (NN $=$ baseline for all settings, while stride
-drops below it) (Fig.~\ref{fig:machine}).  For deployment cost, the MLP's
+(20--80 cycles) was explored in the archived scan (Fig.~\ref{fig:machine}).
+These results require regeneration before supporting a robustness claim. For
+deployment cost, the MLP's
 257 parameters fit in a
 few cache lines; the pure-NumPy backend is 5--9x faster wall-clock than
 an equivalent scikit-learn MLP at statistically identical hit rates
@@ -582,8 +562,8 @@ we formalize and measure with the no-prefetch baseline.  Learning-based
 predictors were proposed for value and address prediction
 \cite{mlpref}; our positioning differs in two ways: we do not try to beat
 the heuristics on regular streams (they are near-optimal and we measure
-the residual), and we add an explicit \emph{do-not-prefetch} signal,
-which is what converts a sometimes-harmful unit into a never-harmful one.
+the residual), and we add an explicit \emph{do-not-prefetch} signal that
+reduces, but does not eliminate, harmful prefetches.
 
 The workloads we target come from the current center of gravity of
 memory-bound serving: LLM inference.  Attention and the KV cache dominate
@@ -597,24 +577,25 @@ Several recent lines are even closer to us and we position against them
 explicitly.  On the architecture side, \emph{Pythia} and \emph{Hermes}
 \cite{mlmem} learn prefetching \emph{online} with RL/perceptrons and aim to
 \emph{outperform} hand-tuned heuristics; we share the online-learning
-ingredient but deliberately \emph{do not} compete on speed---classic units
-own that---and instead introduce and statistically verify a
-\emph{safety} property (never worse than no-prefetching on any seed), which
-none of these works declares.  On the LLM-serving side, speculative
+ingredient but focus on an explicit confidence gate. Our validation finds a
+random-stream counterexample, so we do not claim a never-worse property. On
+the LLM-serving side, speculative
 decoding \cite{spec} showed that prediction with verification works, and
 2025--26 systems use lookahead to \emph{prefetch} exactly the KV blocks or
 MoE experts that will be needed next \cite{oasiskv,apex,stmoe}, with at
 least one (APEX) using a \emph{learned confidence} to decide whether to
 prefetch at all \cite{apex}---conceptually our gate, at a coarser
 granularity and aimed at throughput rather than at a no-harm guarantee.
-Our microscopic L1-delta formulation and the measurable never-worse
-property are, to the best of our knowledge, the pieces none of these
-explicitly provide.
+Our microscopic L1-delta formulation is a controlled software study rather
+than a claim of hardware superiority.
 
 \section{Limitations and future work}
 \label{sec:lim}
 The honest denominator of this work is its simulator: $L=40$-cycle DRAM and
-a 32-line L1, not a full ChampSim/SPEC evaluation.  An IPC-level comparison
+a 32-line L1, not a full ChampSim/SPEC evaluation. The canonical profile
+grants instantaneous prefetch completion and excludes predictor cycles. With
+a 40-cycle completion latency, sequential/strided speedups fall to about
+1.02x, so the headline cycle reductions are an ideal upper bound. An IPC-level comparison
 against published prefetchers on real SPEC/GAP traces requires the port we
 list as future work.  Second, the gate is still too conservative on dense
 large-stride compute (matmul, mergesort); an adaptive per-region delta
@@ -626,25 +607,27 @@ front-end, and multi-stream/multi-core behavior remain open.
 
 \section{Reproducibility}
 \label{sec:rep}
-Every experiment persists \texttt{config.json} and \texttt{manifest.json}
-(git revision, library versions, host) next to raw per-seed
+Every experiment persists fully resolved \texttt{config.json} and
+\texttt{manifest.json} (git revision, clean-tree flag, source/config hashes,
+library versions, host) next to raw per-seed
 \texttt{runs.csv} and aggregated \texttt{summary.csv}; a LaTeX table and
-the publication figures are regenerated from the same files.  One command
-reruns the full battery (\texttt{python benchmarks/paper\_experiments.py});
+the publication figures are regenerated from the same files.
+\texttt{python -m benchmarks.verify\_paper --seeds 30} checks raw aggregation,
+machine-readable claims, provenance, exact reruns and timing sensitivity. The
+battery is run with \texttt{python benchmarks/paper\_experiments.py};
 a static dashboard (\texttt{dashboard.html}, built by
 \texttt{webapp/make\_dashboard.py}) exposes every recorded experiment and
 is the fast path for new ablations.
 
 \section{Conclusion}
-We asked whether a learned prefetcher adds anything beyond the classics.
-The answer our experiments give is a single, statistically robust
-property: \emph{a confidence-gated delta predictor is never worse than no
-prefetching}, on any stream, with no tuning---whereas every classic
-mechanism we modeled degrades below no-prefetch on unpredictable traffic.
-When the stream is regular the learned unit recovers most of the
-heuristics' win; when it is not, it does no harm.  The safety of
-inactivity, we argue, is exactly the property a prefetcher in front of
-real, mixed ML/agent workloads needs.
+We asked whether a learned prefetcher adds anything beyond simple heuristics.
+In this controlled model the gate reduces average pollution on random traffic
+and performs well on phased traffic, but nearly disables useful mixed
+read/write prefetches and admits a per-seed random regression. More
+importantly, adding realistic completion latency removes almost all of the
+large cycle speedup. The result is a reproducible characterization of an
+idealized mechanism and its failure modes, not a universal safety or
+hardware-performance claim.
 
 \begin{thebibliography}{12}
 \bibitem{memorywall} W.~A. Wulf and S.~A. McKee.

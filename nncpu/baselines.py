@@ -1,15 +1,14 @@
-"""Modeled implementations of published cache prefetchers.
+"""Simplified prefetcher models for controlled in-simulator comparisons.
 
-These are faithful software models of the *mechanism* of each prefetcher,
-sharing our Predict-next-address interface, so the paper can compare them
-inside our simulator on equal footing:
+These models share the predict-next-address interface but do not reproduce
+the full metadata, timing or hardware state of published implementations:
 
 * :class:`NextLinePrefetcher` -- the classic next-64B/-line prefetcher.
 * :class:`BertiPrefetcher`    -- best-offset prefetcher (Berti et al. 2020):
   a table indexed by the observed delta tracks which next-delta followed
   that delta most often, and prefetches the mode (a 1st-order Markov
   delta predictor with an LRU table).
-* :class:`StridePrefetcher` (in prefetchers.py) -- PC-stride-style.
+* :class:`StridePrefetcher` (in prefetchers.py) -- one global stride stream.
 
 None of them has a confidence gate: that is exactly the difference the
 paper is about.
