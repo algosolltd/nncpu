@@ -1,4 +1,4 @@
-# nncpu — Cycle-Accurate CPU Simulator with a Streaming NN Prefetcher
+# nncpu — Latency-Accounting CPU Simulator with a Streaming NN Prefetcher
 
 A small, honest research sandbox for studying how machine-learning-driven
 cache prefetching hides main-memory latency.  It models an in-order scalar
@@ -35,9 +35,10 @@ Every instruction advances a clock directly by its latency:
   write-back is parked in a store buffer that only stalls the core when
   it overflows
 
-The cache is fully-associative LRU (32 lines).  Because
-`prefetch()` brings a line in at zero cost (it models otherwise-idle DRAM
-bandwidth), the whole game is *predicting which line comes next*.
+The cache is fully-associative LRU (32 lines). The paper profile uses
+`prefetch_latency=0`: `prefetch()` brings a line in immediately, modeling an
+ideal upper bound with idle DRAM bandwidth. This is not a timeliness-aware
+hardware result. Set `--prefetch-latency 40` to expose late predictions.
 
 All numbers are counted honestly (`CPUReport`): hits, misses, hit rate,
 prefetches issued vs. actually used, per-category cycle totals, IPC.
@@ -58,8 +59,8 @@ memory access closes one training sample — features of the previous
 access, target = the delta that actually followed — and issues one
 prediction.  A per-access confidence gate tracks recent prediction error:
 when the stream becomes unpredictable (e.g. random access) it answers
-`None` instead of prefetching, so the NN **never pollutes the cache** —
-the thing a blind stride prefetcher cannot do.
+`None` instead of prefetching. Warm-up predictions can still pollute the
+cache, so safety is measured empirically rather than claimed universally.
 
 Two MLP backends exist (`--mlp`): the default `numpy` (`nncpu/mlp.py`) is
 a hand-rolled 6→32→1 ReLU net with Adam — fully deterministic per seed
@@ -123,17 +124,18 @@ Takeaways:
 
 ```bash
 pip install -r requirements.txt
-python -m pytest tests -q            # 31 unit + integration tests
+python -m pytest tests -q            # unit, integration and evidence tests
 python main.py                       # default experiment (stored under results/)
+python -m benchmarks.verify_paper --seeds 1   # source/artifact/claim parity
 
 # static dashboard (no server needed to view)
 python webapp/make_dashboard.py      # builds dashboard.html from results/
 python -m http.server 8501           # then open http://localhost:8501/dashboard.html
 ```
 
-The dashboard is a self-contained HTML file (tabs + Plotly charts) with the
-result data inlined — open it directly or serve the folder with any static
-server. Rebuild it after every experiment battery with `make_dashboard.py`.
+The dashboard inlines all result data, while Plotly itself is loaded from a
+pinned CDN URL, so charts require network access. Rebuild it after every
+experiment battery with `make_dashboard.py`.
 
 ## Running a paper-ready experiment
 
@@ -141,8 +143,8 @@ Every experiment is reproducible end-to-end and stored as:
 
 ```
 results/<name>/
-├── config.json    # exact machine + NN + workload + seed specification
-├── manifest.json  # provenance: git revision, library versions, host, time
+├── config.json    # fully resolved machine + NN + workload + seed specification
+├── manifest.json  # git revision, source/config hashes, versions, host, time
 ├── runs.csv       # one row per (seed, workload, config): raw cycles, hits...
 ├── speedups.csv   # per-run speedup vs baseline
 ├── summary.csv    # per (workload, config): mean, std, 95% CI
@@ -158,10 +160,20 @@ python main.py --name main --description "synthetic streams, 10 seeds" \
     --runs 10 --length 4000
 ```
 
-baseline/stride are deterministic (their std is 0); the **NN is seeded per
-run** (`random_state = seed + run`) so its mean, std, and 95% CI are real
-statistics. The dashboard runs the same pipeline and can load any earlier
-experiment from disk for inspection or export.
+Every run uses `seed + run` both for NN initialization and for stochastic
+workloads; all configs within that run receive the same materialized stream.
+Deterministic workloads still vary only through NN initialization. The
+dashboard can load earlier experiments for inspection or export.
+
+For publication, run the complete evidence check after generating artifacts:
+
+```bash
+python -m benchmarks.verify_paper --seeds 30
+```
+
+It checks the generating commit, clean-tree status, source/config hashes,
+raw-to-summary aggregation, machine-readable claims, exact reruns, and reports
+zero-latency versus timed-prefetch sensitivity separately.
 
 ## Visualizations
 
@@ -181,4 +193,4 @@ prefetch accuracy, and speedup per config.
 
 ## License
 
-MIT License.
+MIT; see `LICENSE`.
