@@ -9,6 +9,8 @@ It does not decide which outcome is favourable or paper-worthy.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
+import json
 import math
 from typing import Mapping, Sequence
 
@@ -119,6 +121,12 @@ def run_gate_study(
         raise ValueError(f"unknown research configs: {sorted(unknown)}")
     rows = []
     for seed, workloads in sorted(workloads_by_seed.items()):
+        stream_ids = {
+            workload: hashlib.sha256(
+                json.dumps(instructions, sort_keys=True, separators=(",", ":")).encode()
+            ).hexdigest()
+            for workload, instructions in workloads.items()
+        }
         for profile in profiles:
             for workload, instructions in workloads.items():
                 for config in configs:
@@ -141,6 +149,8 @@ def run_gate_study(
                             profile=profile.name,
                             config=config,
                             distance=distance,
+                            stream_sha256=stream_ids[workload],
+                            predictor_seed=int(seed) if config == "nn" else -1,
                         )
                         rows.append(row)
     runs = pd.DataFrame(rows)
@@ -199,6 +209,10 @@ def aggregate_research(runs: pd.DataFrame) -> pd.DataFrame:
     for keys, group in groups:
         row = dict(zip(("profile", "workload", "config", "distance"), keys))
         row["runs"] = len(group)
+        row["unique_streams"] = int(group.stream_sha256.nunique())
+        row["unique_predictor_seeds"] = int(
+            group[group.predictor_seed >= 0].predictor_seed.nunique()
+        )
         for metric in metrics:
             mean, std, ci95 = _mean_ci(group[metric])
             row[f"{metric}_mean"] = mean
@@ -214,14 +228,20 @@ def matched_contrasts(runs: pd.DataFrame) -> pd.DataFrame:
     keys = ["seed", "profile", "workload", "distance"]
     for candidate, control in MATCHED_COMPARISONS:
         left = runs[runs.config == candidate][
-            keys + ["cycles", "prefetch_pollution_rate", "prefetch_issued"]
+            keys + ["stream_sha256", "predictor_seed", "cycles",
+                    "prefetch_pollution_rate", "prefetch_issued"]
         ]
         right = runs[runs.config == control][
-            keys + ["cycles", "prefetch_pollution_rate", "prefetch_issued"]
+            keys + ["stream_sha256", "predictor_seed", "cycles",
+                    "prefetch_pollution_rate", "prefetch_issued"]
         ]
         paired = left.merge(right, on=keys, suffixes=("_candidate", "_control"))
         if paired.empty:
             continue
+        if not (
+            paired.stream_sha256_candidate == paired.stream_sha256_control
+        ).all():
+            raise ValueError("paired configurations received different streams")
         paired["cycle_benefit"] = (
             paired.cycles_control / paired.cycles_candidate
         )
@@ -236,6 +256,14 @@ def matched_contrasts(runs: pd.DataFrame) -> pd.DataFrame:
         for group_keys, group in paired.groupby(
             ["profile", "workload", "distance"], sort=False
         ):
+            raw_pairs = len(group)
+            # A deterministic predictor replayed on an identical trace is one
+            # experimental unit, not N independent observations. Neural model
+            # seeds remain distinct through predictor_seed_candidate.
+            group = group.drop_duplicates(
+                ["stream_sha256_candidate", "predictor_seed_candidate",
+                 "predictor_seed_control"]
+            )
             benefit, benefit_std, benefit_ci = _mean_ci(group.cycle_benefit)
             pollution, _, pollution_ci = _mean_ci(group.pollution_reduction)
             traffic, _, traffic_ci = _mean_ci(group.traffic_reduction.fillna(0))
@@ -249,6 +277,7 @@ def matched_contrasts(runs: pd.DataFrame) -> pd.DataFrame:
                 "workload": group_keys[1],
                 "distance": group_keys[2],
                 "pairs": len(group),
+                "raw_pairs": raw_pairs,
                 "cycle_benefit_mean": benefit,
                 "cycle_benefit_std": benefit_std,
                 "cycle_benefit_ci95": benefit_ci,

@@ -20,6 +20,13 @@ def test_gate_study_is_paired_and_reports_matched_controls():
     }
     assert set(summary.distance) == {1, 2}
     assert {"wins", "losses", "ties", "p_value_holm"} <= set(contrasts.columns)
+    classical = contrasts[contrasts.candidate == "regularity_stride"]
+    neural = contrasts[
+        (contrasts.candidate == "nn") & (contrasts.control == "gated_stride")
+    ]
+    assert set(classical.pairs) == {1}  # identical deterministic streams collapse
+    assert set(classical.raw_pairs) == {2}
+    assert set(neural.pairs) == {2}  # distinct NN initialization seeds remain
 
 
 def test_research_profile_rejects_invalid_distance():
