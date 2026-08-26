@@ -30,6 +30,62 @@ def _prediction_checks(summary: dict) -> dict[str, bool]:
     }
 
 
+def _verify_machine_claims(summary: dict, manifest: dict, contrasts: list[dict]) -> None:
+    claims_path = campaign.REPOSITORY / "paper" / "champsim_claims.json"
+    claims = json.loads(claims_path.read_text(encoding="utf-8"))
+    protocol = claims["protocol"]
+    if protocol["independent_programs"] != len(manifest["trace_order"]):
+        raise AssertionError("claim independent-unit count mismatch")
+    if protocol["warmup_instructions"] != manifest["warmup_instructions"]:
+        raise AssertionError("claim warm-up mismatch")
+    if protocol["simulation_instructions"] != manifest["simulation_instructions"]:
+        raise AssertionError("claim ROI mismatch")
+    if protocol["selection"] != manifest["selection_rule"]:
+        raise AssertionError("claim trace-selection rule mismatch")
+    official = summary["raw_stride_vs_official_ip_stride"]
+    official_claim = claims["raw_control_vs_official_ip_stride"]
+    if not official_claim["exact_output_equivalence"]:
+        raise AssertionError("machine claim does not require official equivalence")
+    if official_claim["geometric_mean_ipc_ratio"] != official["geometric_mean_ipc_speedup"]:
+        raise AssertionError("official-equivalence IPC claim mismatch")
+    if official_claim["ties"] != official["ties"]:
+        raise AssertionError("official-equivalence tie claim mismatch")
+
+    matched = summary["regularity_stride_vs_raw_stride"]
+    matched_claim = claims["regularity_stride_vs_raw_stride"]
+    mapping = {
+        "geometric_mean_ipc_ratio": "geometric_mean_ipc_speedup",
+        "bootstrap_95pct_ci": "bootstrap_95pct_ci",
+        "exact_two_sided_sign_p": "exact_two_sided_sign_p",
+        "wins": "wins",
+        "losses": "losses",
+        "aggregate_prefetch_issue_reduction": "aggregate_prefetch_issue_reduction",
+        "aggregate_l2c_prefetch_miss_reduction": "aggregate_l2c_prefetch_miss_reduction",
+        "aggregate_llc_prefetch_miss_reduction": "aggregate_llc_prefetch_miss_reduction",
+        "aggregate_dram_read_request_reduction": "aggregate_dram_read_request_reduction",
+        "raw_prefetch_accuracy": "control_prefetch_accuracy",
+        "gated_prefetch_accuracy": "candidate_prefetch_accuracy",
+        "useful_prefetch_retention": "useful_prefetch_retention",
+        "maximum_relative_callback_count_difference": "maximum_relative_callback_count_difference",
+    }
+    for claim_key, summary_key in mapping.items():
+        if matched_claim[claim_key] != matched[summary_key]:
+            raise AssertionError(f"machine claim mismatch: {claim_key}")
+
+    observed_per_program = [
+        {
+            "trace": row["trace"],
+            "ipc_ratio": row["ipc_speedup"],
+            "dram_read_request_reduction": row["dram_read_request_reduction"],
+            "prefetch_issue_reduction": row["prefetch_issue_reduction"],
+        }
+        for row in contrasts
+        if row["candidate"] == "regularity_stride" and row["control"] == "raw_stride"
+    ]
+    if claims["per_program_regularity_stride_vs_raw_stride"] != observed_per_program:
+        raise AssertionError("machine per-program claims mismatch")
+
+
 def _assert_csv_exact(path: Path, expected: list[dict]) -> None:
     with path.open(newline="", encoding="utf-8") as handle:
         observed = list(csv.DictReader(handle))
@@ -87,6 +143,7 @@ def verify(results: Path, champsim_checkout: Path | None, trace_dir: Path | None
     failed = [name for name, passed in checks.items() if not passed]
     if failed:
         raise AssertionError(f"frozen predictions failed: {failed}")
+    _verify_machine_claims(summary, manifest, contrasts)
 
     if trace_dir is not None:
         for trace_name, expected in identity["traces"].items():
@@ -106,6 +163,7 @@ def verify(results: Path, champsim_checkout: Path | None, trace_dir: Path | None
     print(f"PASS exact raw reproduction ({len(records)} runs)")
     print("PASS raw control equals official ip_stride on every trace")
     print("PASS source, configuration, and trace-list hashes")
+    print("PASS machine-readable paper claims")
     if trace_dir is not None:
         print("PASS external trace hashes")
     if champsim_checkout is not None:

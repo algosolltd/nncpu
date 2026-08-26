@@ -1,0 +1,89 @@
+{
+  "artifact": "results/champsim_holdout_standard",
+  "protocol": {
+    "independent_programs": 9,
+    "warmup_instructions": 50000000,
+    "simulation_instructions": 200000000,
+    "selection": "highest-weight official DPC-3 SimPoint per benchmark program"
+  },
+  "raw_control_vs_official_ip_stride": {
+    "geometric_mean_ipc_ratio": 1.0,
+    "exact_output_equivalence": true,
+    "ties": 9
+  },
+  "regularity_stride_vs_raw_stride": {
+    "geometric_mean_ipc_ratio": 0.9943357730629907,
+    "bootstrap_95pct_ci": [
+      0.9844513595129983,
+      0.9999972347189239
+    ],
+    "exact_two_sided_sign_p": 1.0,
+    "wins": 4,
+    "losses": 5,
+    "aggregate_prefetch_issue_reduction": 0.3676708541490783,
+    "aggregate_l2c_prefetch_miss_reduction": 0.0732776945608179,
+    "aggregate_llc_prefetch_miss_reduction": 0.06847738230593647,
+    "aggregate_dram_read_request_reduction": 0.0008333776356205247,
+    "raw_prefetch_accuracy": 0.10638379835935963,
+    "gated_prefetch_accuracy": 0.15617322953894586,
+    "useful_prefetch_retention": 0.9282699655595942,
+    "maximum_relative_callback_count_difference": 0.001049389897068361
+  },
+  "per_program_regularity_stride_vs_raw_stride": [
+    {
+      "trace": "602.gcc_s-734B.champsimtrace.xz",
+      "ipc_ratio": 0.9563070111966752,
+      "dram_read_request_reduction": 0.0021995409789837828,
+      "prefetch_issue_reduction": 0.19445856331867173
+    },
+    {
+      "trace": "619.lbm_s-4268B.champsimtrace.xz",
+      "ipc_ratio": 1.0000174773841506,
+      "dram_read_request_reduction": 2.0792076227404976e-07,
+      "prefetch_issue_reduction": 0.009461940403897806
+    },
+    {
+      "trace": "620.omnetpp_s-874B.champsimtrace.xz",
+      "ipc_ratio": 0.9966243871054188,
+      "dram_read_request_reduction": 0.0033873042130632136,
+      "prefetch_issue_reduction": 0.9600414132713875
+    },
+    {
+      "trace": "621.wrf_s-575B.champsimtrace.xz",
+      "ipc_ratio": 1.000012272029969,
+      "dram_read_request_reduction": 0.005235602094240788,
+      "prefetch_issue_reduction": 0.40403830141548713
+    },
+    {
+      "trace": "625.x264_s-18B.champsimtrace.xz",
+      "ipc_ratio": 0.9998029502219649,
+      "dram_read_request_reduction": 0.0002582391650860494,
+      "prefetch_issue_reduction": 0.1194659232631502
+    },
+    {
+      "trace": "627.cam4_s-573B.champsimtrace.xz",
+      "ipc_ratio": 0.9997499600303157,
+      "dram_read_request_reduction": 0.0013140222735006368,
+      "prefetch_issue_reduction": 0.7690523137730122
+    },
+    {
+      "trace": "628.pop2_s-17B.champsimtrace.xz",
+      "ipc_ratio": 0.9962641001777544,
+      "dram_read_request_reduction": 0.0006064552467319739,
+      "prefetch_issue_reduction": 0.8789173603319156
+    },
+    {
+      "trace": "631.deepsjeng_s-928B.champsimtrace.xz",
+      "ipc_ratio": 1.0003348156510232,
+      "dram_read_request_reduction": 0.0006982296499842278,
+      "prefetch_issue_reduction": 0.7920657368828296
+    },
+    {
+      "trace": "641.leela_s-800B.champsimtrace.xz",
+      "ipc_ratio": 1.000760450003854,
+      "dram_read_request_reduction": 0.0011340904437129318,
+      "prefetch_issue_reduction": 0.6387795210295873
+    }
+  ],
+  "interpretation": "The gate improves accepted-prefetch proxies but does not materially reduce DRAM reads and does not improve geometric-mean IPC."
+}
