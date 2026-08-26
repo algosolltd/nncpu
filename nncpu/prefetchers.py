@@ -52,6 +52,64 @@ _REPLAY_SIZE = 64
 _WARMUP_EPOCHS = 4     # epochs on the very first fit, so the first prediction
                        # isn't pure random-init noise
 
+
+class ConfidenceGate:
+    """Bounded online error gate shared by learned and classical predictors.
+
+    A matched classical control must receive exactly the same warm-up,
+    window, aggregation and scale policy as the neural predictor.  Otherwise
+    an apparent learning benefit can really be an unmatched admission rule.
+    """
+
+    def __init__(
+        self,
+        enabled: bool = True,
+        threshold: float = _GATE_THRESHOLD,
+        scale: Optional[float] = 0.5,
+        aggregator: str = "median",
+        window: int = _GATE_WINDOW,
+        warmup: int = 8,
+    ):
+        if aggregator not in ("mean", "median"):
+            raise ValueError(
+                f"Unknown gate_aggregator {aggregator!r}; "
+                "expected 'mean' or 'median'"
+            )
+        if window <= 0:
+            raise ValueError("gate window must be > 0")
+        if warmup < 0:
+            raise ValueError("gate warmup must be >= 0")
+        self.enabled = enabled
+        self.threshold = threshold
+        self.scale = scale
+        self.aggregator = aggregator
+        self.warmup = warmup
+        self._deltas: "deque[float]" = deque(maxlen=window)
+        self._errors: "deque[float]" = deque(maxlen=window)
+
+    def observe(self, predicted_delta: Optional[int], actual_delta: int) -> None:
+        """Record one prediction outcome without changing the gate policy."""
+        self._deltas.append(abs(actual_delta))
+        if predicted_delta is not None:
+            self._errors.append(abs(predicted_delta - actual_delta))
+
+    @property
+    def is_open(self) -> bool:
+        if not self.enabled or len(self._errors) < self.warmup:
+            return True
+        if self.scale is not None and self._deltas:
+            deltas = sorted(self._deltas)
+            characteristic_delta = max(deltas[len(deltas) // 2], 4.0)
+            threshold = self.scale * characteristic_delta
+        else:
+            threshold = self.threshold
+        if self.aggregator == "median":
+            errors = sorted(self._errors)
+            recent_error = errors[len(errors) // 2]
+        else:
+            recent_error = sum(self._errors) / len(self._errors)
+        return recent_error <= threshold
+
 # Feature-ablation modes: which columns of the 6-D encoding the MLP sees.
 FEATURE_MODES = {
     "full": (0, 1, 2, 3, 4, 5),
@@ -90,6 +148,87 @@ class StridePrefetcher(Prefetcher):
         return nxt if nxt >= 0 else addr
 
 
+class ConfidenceFilteredPrefetcher(Prefetcher):
+    """Predictor-agnostic admission filter based on recent address error.
+
+    The wrapped predictor is always updated, even while requests are
+    suppressed, so it can recover when a phase becomes predictable again.
+    """
+
+    name = "confidence_filtered"
+
+    def __init__(
+        self,
+        inner: Prefetcher,
+        confidence_gate: bool = True,
+        gate_threshold: float = _GATE_THRESHOLD,
+        gate_scale: Optional[float] = 0.5,
+        gate_aggregator: str = "median",
+    ):
+        self.inner = inner
+        self._last_addr: Optional[int] = None
+        self._last_prediction: Optional[int] = None
+        self._gate = ConfidenceGate(
+            enabled=confidence_gate,
+            threshold=gate_threshold,
+            scale=gate_scale,
+            aggregator=gate_aggregator,
+        )
+
+    def predict_next(self, addr: int, pc: int, opcode: str) -> Optional[int]:
+        if self._last_addr is not None:
+            actual_delta = addr - self._last_addr
+            predicted_delta = (
+                self._last_prediction - self._last_addr
+                if self._last_prediction is not None else None
+            )
+            self._gate.observe(predicted_delta, actual_delta)
+
+        prediction = self.inner.predict_next(addr, pc, opcode)
+        self._last_addr = addr
+        self._last_prediction = prediction
+        if not self._gate.is_open:
+            return None
+        return prediction
+
+    @property
+    def gate_open(self) -> bool:
+        return self._gate.is_open
+
+
+class GatedStridePrefetcher(ConfidenceFilteredPrefetcher):
+    """Matched classical control: global stride plus the NN's gate."""
+
+    name = "gated_stride"
+
+    def __init__(self, **kwargs):
+        super().__init__(StridePrefetcher(), **kwargs)
+
+
+class LookaheadPrefetcher(Prefetcher):
+    """Move a next-address prediction farther ahead along its delta.
+
+    Prediction and admission remain the wrapped module's responsibility;
+    this adapter only turns one-step accuracy into enough lead time to test
+    non-zero memory latency.
+    """
+
+    name = "lookahead"
+
+    def __init__(self, inner: Prefetcher, distance: int = 1):
+        if distance <= 0:
+            raise ValueError("lookahead distance must be > 0")
+        self.inner = inner
+        self.distance = distance
+
+    def predict_next(self, addr: int, pc: int, opcode: str) -> Optional[int]:
+        prediction = self.inner.predict_next(addr, pc, opcode)
+        if prediction is None:
+            return None
+        target = addr + (prediction - addr) * self.distance
+        return target if target >= 0 else addr
+
+
 class NNPrefetcher(Prefetcher):
     """Online MLP predicting the *next address delta* with error gating."""
 
@@ -116,11 +255,6 @@ class NNPrefetcher(Prefetcher):
                 f"Unknown feature_mode {feature_mode!r}; "
                 f"expected one of {sorted(FEATURE_MODES)}"
             )
-        if gate_aggregator not in ("mean", "median"):
-            raise ValueError(
-                f"Unknown gate_aggregator {gate_aggregator!r}; "
-                "expected 'mean' or 'median'"
-            )
         self.feature_mode = feature_mode
         self.warmup_epochs = warmup_epochs
         self._mask = np.asarray(FEATURE_MODES[feature_mode])
@@ -138,7 +272,12 @@ class NNPrefetcher(Prefetcher):
         self.gate_aggregator = gate_aggregator
         self.delta_cap = delta_cap
         self._cap_scaled = delta_cap / _DELTA_SCALE
-        self._recent_deltas = deque(maxlen=_GATE_WINDOW)  # |actual delta| for the scale
+        self._gate = ConfidenceGate(
+            enabled=confidence_gate,
+            threshold=gate_threshold,
+            scale=gate_scale,
+            aggregator=gate_aggregator,
+        )
         if mlp_backend not in ("numpy", "sklearn"):
             raise ValueError(f"Unknown MLP backend: {mlp_backend!r}")
         if mlp_backend == "sklearn" and not _HAS_SKLEARN:
@@ -150,7 +289,6 @@ class NNPrefetcher(Prefetcher):
         self._pending_features: Optional[np.ndarray] = None  # context for an open sample
         self._last_predicted_delta: Optional[int] = None
         self._replay: "deque[tuple[np.ndarray, float]]" = deque(maxlen=_REPLAY_SIZE)
-        self._recent_error: "deque[float]" = deque(maxlen=_GATE_WINDOW)
         self._model = None
 
     def _build_model(self):
@@ -189,7 +327,6 @@ class NNPrefetcher(Prefetcher):
         # 1) close the previous sample: (features @ t-1) -> (delta @ t)
         if self._pending_features is not None and self._prev_addr is not None:
             delta_now = addr - self._prev_addr
-            self._recent_deltas.append(abs(delta_now))
             # clamp the training target so gather-style outliers do not pull
             # the regression away from the dominant (sequential) delta
             clamped = max(-self.delta_cap, min(self.delta_cap, delta_now))
@@ -202,7 +339,7 @@ class NNPrefetcher(Prefetcher):
                 else self._last_delta
             )
             if ref is not None:
-                self._recent_error.append(abs(ref - delta_now))
+                self._gate.observe(ref, delta_now)
             self._fit_if_ready()
 
         # 2) remember the current context as the target of the next sample
@@ -240,25 +377,7 @@ class NNPrefetcher(Prefetcher):
         return nxt if nxt >= 0 else addr + _DEFAULT_DELTA
 
     def _confident(self) -> bool:
-        if len(self._recent_error) < 8:  # allow a warm-up runway
-            return True
-        # threshold: relative to the stream's characteristic delta magnitude
-        # scales with large strides (matmul rows) yet stays strict on noise.
-        if self.gate_scale is not None and self._recent_deltas:
-            ds = sorted(self._recent_deltas)
-            scale = max(ds[len(ds) // 2], 4.0)   # floor of half a line
-            threshold = self.gate_scale * scale
-        else:
-            threshold = self.gate_threshold
-        if self.gate_aggregator == "median":
-            # Robust to occasional large outliers (e.g. an attention gather
-            # among sequential KV writes): sparse far accesses must not make
-            # the whole stream look unpredictable.
-            errs = sorted(self._recent_error)
-            recent = errs[len(errs) // 2]
-        else:
-            recent = sum(self._recent_error) / len(self._recent_error)
-        return recent <= threshold
+        return self._gate.is_open
 
     @property
     def gate_open(self) -> bool:
@@ -292,6 +411,13 @@ def make_prefetcher(name: str, **kwargs) -> Optional[Prefetcher]:
         return None
     if name == "stride":
         return StridePrefetcher()
+    if name == "gated_stride":
+        gate_keys = {
+            "confidence_gate", "gate_threshold", "gate_scale", "gate_aggregator"
+        }
+        return GatedStridePrefetcher(
+            **{key: value for key, value in kwargs.items() if key in gate_keys}
+        )
     if name == "nn":
         return NNPrefetcher(**kwargs)
     raise ValueError(f"Unknown prefetcher: {name!r}")

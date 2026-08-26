@@ -18,10 +18,13 @@ from collections import OrderedDict
 from typing import Optional
 
 from .cpu import LINE_SIZE
-from .prefetchers import Prefetcher, _DEFAULT_DELTA
+from .prefetchers import ConfidenceFilteredPrefetcher, Prefetcher, _DEFAULT_DELTA
 
 # extra configs selectable in experiments (CONFIGS keeps the 3 core ones)
-SIM_CONFIGS = ("baseline", "stride", "nextline", "berti", "nn")
+SIM_CONFIGS = (
+    "baseline", "stride", "gated_stride", "nextline", "gated_nextline",
+    "berti", "gated_berti", "nn"
+)
 
 
 class NextLinePrefetcher(Prefetcher):
@@ -106,6 +109,19 @@ def make_sim_prefetcher(name: str, machine=None, **kwargs) -> Optional[Prefetche
         return NextLinePrefetcher(
             line_size=machine.line_size if machine is not None else LINE_SIZE
         )
+    gate_keys = {
+        "confidence_gate", "gate_threshold", "gate_scale", "gate_aggregator"
+    }
+    gate_kwargs = {key: value for key, value in kwargs.items() if key in gate_keys}
+    if name == "gated_nextline":
+        return ConfidenceFilteredPrefetcher(
+            NextLinePrefetcher(
+                line_size=machine.line_size if machine is not None else LINE_SIZE
+            ),
+            **gate_kwargs,
+        )
     if name == "berti":
         return BertiPrefetcher()
+    if name == "gated_berti":
+        return ConfidenceFilteredPrefetcher(BertiPrefetcher(), **gate_kwargs)
     return make_prefetcher(name, **kwargs)

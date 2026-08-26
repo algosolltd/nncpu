@@ -11,7 +11,11 @@ from nncpu.baselines import (
 from nncpu.cpu import LINE_SIZE
 from nncpu.cpu import MachineConfig
 from nncpu.benchmark import run_workload
-from nncpu.prefetchers import Prefetcher
+from nncpu.prefetchers import (
+    ConfidenceFilteredPrefetcher,
+    GatedStridePrefetcher,
+    Prefetcher,
+)
 
 
 def test_nextline_predicts_next_line():
@@ -35,6 +39,11 @@ def test_make_sim_prefetcher_resolves_all():
     assert isinstance(make_sim_prefetcher("berti"), BertiPrefetcher)
     assert isinstance(make_sim_prefetcher("nn"), Prefetcher)
     assert isinstance(make_sim_prefetcher("stride"), Prefetcher)
+    assert isinstance(make_sim_prefetcher("gated_stride"), GatedStridePrefetcher)
+    assert isinstance(
+        make_sim_prefetcher("gated_nextline"), ConfidenceFilteredPrefetcher
+    )
+    assert isinstance(make_sim_prefetcher("gated_berti"), ConfidenceFilteredPrefetcher)
 
 
 def test_berti_learns_constant_stride():
@@ -67,4 +76,7 @@ def test_berti_table_bounded():
 
 
 def test_sim_configs_includes_core():
-    assert set(SIM_CONFIGS) == {"baseline", "stride", "nn", "nextline", "berti"}
+    assert set(SIM_CONFIGS) == {
+        "baseline", "stride", "gated_stride", "nn", "nextline",
+        "gated_nextline", "berti", "gated_berti"
+    }

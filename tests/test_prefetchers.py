@@ -3,7 +3,14 @@
 import numpy as np
 import pytest
 
-from nncpu.prefetchers import StridePrefetcher, NNPrefetcher, make_prefetcher
+from nncpu.prefetchers import (
+    ConfidenceGate,
+    GatedStridePrefetcher,
+    LookaheadPrefetcher,
+    NNPrefetcher,
+    StridePrefetcher,
+    make_prefetcher,
+)
 
 
 def strided_addresses(n=40, base=0x1000, step=4):
@@ -51,7 +58,43 @@ def test_make_prefetcher_factory():
     assert make_prefetcher("baseline") is None
     assert make_prefetcher(None) is None
     assert isinstance(make_prefetcher("stride"), StridePrefetcher)
+    assert isinstance(make_prefetcher("gated_stride"), GatedStridePrefetcher)
     assert isinstance(make_prefetcher("nn"), NNPrefetcher)
+
+
+def test_gated_stride_is_a_matched_non_neural_control():
+    predictable = [0x1000 + i * 8 for i in range(80)]
+    p = GatedStridePrefetcher()
+    predictions = feed(p, predictable)
+    assert p.gate_open
+    assert predictions[-1] == predictable[-1] + 8
+
+    state = 0x12345678
+    noisy = []
+    for _ in range(160):
+        state = (1103515245 * state + 12345) % (2 ** 31)
+        noisy.append(0x1000 + state % 4093)
+    predictions = feed(p, noisy)
+    assert sum(pred is None for pred in predictions[-48:]) > 24
+
+
+def test_confidence_gate_validation_and_warmup():
+    with pytest.raises(ValueError):
+        ConfidenceGate(aggregator="maximum")
+    gate = ConfidenceGate(warmup=2, scale=None, threshold=0)
+    assert gate.is_open
+    gate.observe(1, 5)
+    assert gate.is_open
+    gate.observe(1, 5)
+    assert not gate.is_open
+
+
+def test_lookahead_extrapolates_without_changing_inner_prediction():
+    p = LookaheadPrefetcher(StridePrefetcher(), distance=4)
+    predictions = feed(p, [100, 108, 116])
+    assert predictions[-1] == 148
+    with pytest.raises(ValueError):
+        LookaheadPrefetcher(StridePrefetcher(), distance=0)
 
 
 def test_nn_learns_sequential_stream():
