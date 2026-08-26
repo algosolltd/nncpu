@@ -1,0 +1,69 @@
+{
+  "development_seeds": [0, 9],
+  "validation_seeds": [10, 39],
+  "values": [
+    {
+      "id": "regularity_random_constrained_benefit",
+      "source": "contrasts",
+      "selector": {"candidate": "regularity_stride", "control": "stride", "profile": "constrained_8way", "workload": "random_read", "distance": 8},
+      "metric": "cycle_benefit_mean",
+      "value": 1.0883808486333326
+    },
+    {
+      "id": "regularity_random_constrained_traffic",
+      "source": "contrasts",
+      "selector": {"candidate": "regularity_stride", "control": "stride", "profile": "constrained_8way", "workload": "random_read", "distance": 8},
+      "metric": "traffic_reduction_mean",
+      "value": 0.9955288655120342
+    },
+    {
+      "id": "regularity_phased_constrained_benefit",
+      "source": "contrasts",
+      "selector": {"candidate": "regularity_stride", "control": "stride", "profile": "constrained_8way", "workload": "phased_switch", "distance": 8},
+      "metric": "cycle_benefit_mean",
+      "value": 1.0758685955987837
+    },
+    {
+      "id": "regularity_phased_constrained_traffic",
+      "source": "contrasts",
+      "selector": {"candidate": "regularity_stride", "control": "stride", "profile": "constrained_8way", "workload": "phased_switch", "distance": 8},
+      "metric": "traffic_reduction_mean",
+      "value": 0.8307390347929141
+    },
+    {
+      "id": "regularity_kv_retention",
+      "source": "contrasts",
+      "selector": {"candidate": "regularity_stride", "control": "stride", "profile": "constrained_8way", "workload": "kv_cache_append", "distance": 8},
+      "metric": "cycle_benefit_mean",
+      "value": 1.0
+    },
+    {
+      "id": "nn_random_no_advantage",
+      "source": "contrasts",
+      "selector": {"candidate": "nn", "control": "regularity_stride", "profile": "timed_8way", "workload": "random_read", "distance": 16},
+      "metric": "cycle_benefit_mean",
+      "value": 0.9998950530887052
+    },
+    {
+      "id": "nn_strided_disadvantage",
+      "source": "contrasts",
+      "selector": {"candidate": "nn", "control": "regularity_stride", "profile": "timed_8way", "workload": "strided_read", "distance": 16},
+      "metric": "cycle_benefit_mean",
+      "value": 0.5101585260864724
+    },
+    {
+      "id": "nn_kv_conditional_advantage",
+      "source": "contrasts",
+      "selector": {"candidate": "nn", "control": "regularity_stride", "profile": "timed_8way", "workload": "kv_cache_append", "distance": 16},
+      "metric": "cycle_benefit_mean",
+      "value": 1.1008670999401575
+    },
+    {
+      "id": "real_trace_independent_unit",
+      "source": "contrasts",
+      "selector": {"candidate": "regularity_stride", "control": "stride", "profile": "timed_8way", "workload": "real_mergesort", "distance": 1},
+      "metric": "pairs",
+      "value": 1
+    }
+  ]
+}

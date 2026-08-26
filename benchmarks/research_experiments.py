@@ -13,8 +13,15 @@ import hashlib
 import json
 import os
 import subprocess
+from datetime import datetime, timezone
 from nncpu.experiment import source_digest
-from nncpu.research import RESEARCH_CONFIGS, default_profiles, run_gate_study
+from nncpu.research import (
+    REGULARITY_MIN_SUPPORT,
+    REGULARITY_WINDOW,
+    RESEARCH_CONFIGS,
+    default_profiles,
+    run_gate_study,
+)
 from nncpu.traces import build_trace_workloads, read_trace
 from nncpu.workloads import build_workloads
 
@@ -44,6 +51,12 @@ def _git_revision() -> str:
     return result.stdout.strip() or "unknown"
 
 
+def _tracked_tree_dirty() -> bool:
+    unstaged = subprocess.run(["git", "diff", "--quiet"], check=False)
+    staged = subprocess.run(["git", "diff", "--cached", "--quiet"], check=False)
+    return unstaged.returncode != 0 or staged.returncode != 0
+
+
 def run(
     output: str,
     seeds: int,
@@ -51,7 +64,11 @@ def run(
     include_real: bool = True,
     seed_start: int = 0,
     configs: tuple[str, ...] = RESEARCH_CONFIGS,
+    role: str = "exploratory",
 ) -> None:
+    # Capture provenance before generated files alter repository status.
+    revision = _git_revision()
+    tracked_dirty = _tracked_tree_dirty()
     workloads = {
         seed: build_study_workloads(length, seed, include_real=include_real)
         for seed in range(seed_start, seed_start + seeds)
@@ -69,6 +86,13 @@ def run(
         "seed_start": seed_start,
         "length": length,
         "configs": configs,
+        "role": role,
+        "development_seed_range": [0, 9],
+        "regularity_gate": {
+            "window": REGULARITY_WINDOW,
+            "min_support": REGULARITY_MIN_SUPPORT,
+            "selection": "selected on development seeds 0-9",
+        },
         "include_real": include_real,
         "profiles": [
             {
@@ -86,7 +110,9 @@ def run(
     with open(os.path.join(output, "manifest.json"), "w", encoding="utf-8") as f:
         json.dump(
             {
-                "git_revision": _git_revision(),
+                "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                "git_revision": revision,
+                "git_tracked_dirty": tracked_dirty,
                 "source_sha256": source_digest(),
                 "config_sha256": hashlib.sha256(config_payload.encode()).hexdigest(),
             },
@@ -111,6 +137,9 @@ def main() -> None:
         help="comma-separated matched-control subset",
     )
     parser.add_argument("--quick", action="store_true")
+    parser.add_argument(
+        "--role", choices=("exploratory", "holdout"), default="exploratory"
+    )
     parser.add_argument("--no-real", action="store_true")
     args = parser.parse_args()
     configs = tuple(part.strip() for part in args.configs.split(",") if part.strip())
@@ -121,6 +150,7 @@ def main() -> None:
         include_real=not args.no_real,
         seed_start=args.seed_start,
         configs=configs,
+        role=args.role,
     )
 
 
