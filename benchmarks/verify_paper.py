@@ -17,7 +17,12 @@ def main(argv=None) -> int:
 
     report = validate_paper_artifact(args.artifact, args.claims, args.seeds)
     for check in report.checks:
-        status = "PASS" if check.passed else "FAIL"
+        if check.passed:
+            status = "PASS"
+        elif check.severity == "warning":
+            status = "WARN"
+        else:
+            status = "FAIL"
         print(f"[{status}] {check.name}: {check.detail}")
     print("\nPrefetch-latency sensitivity (speedup vs no-prefetch):")
     print(json.dumps(report.sensitivity, indent=2))
@@ -26,4 +31,3 @@ def main(argv=None) -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-
