@@ -1,0 +1,4 @@
+{
+  "description": "first-fit warm-up epochs sweep [NN variants: [('warm_1', {'warmup_epochs': 1}), ('warm_2', {'warmup_epochs': 2}), ('warm_4', {'warmup_epochs': 4}), ('warm_8', {'warmup_epochs': 8})]]",
+  "generated_at": "2026-08-23 20:29:25"
+}

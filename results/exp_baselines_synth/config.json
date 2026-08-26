@@ -1,0 +1,15 @@
+{
+  "kind": "trace_battery",
+  "name": "exp_baselines_synth",
+  "seeds": 8,
+  "length": 2000,
+  "patterns": [
+    "sequential_read",
+    "strided_read",
+    "mixed_read_write",
+    "random_read",
+    "phased_switch",
+    "arithmetic_mix"
+  ],
+  "generated_at": "2026-08-23 21:48:28"
+}

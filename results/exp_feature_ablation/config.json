@@ -1,0 +1,4 @@
+{
+  "description": "MLP input feature ablation [NN variants: [('feat_full', {'feature_mode': 'full'}), ('feat_no_opcode', {'feature_mode': 'no_opcode'}), ('feat_no_pc', {'feature_mode': 'no_pc'}), ('feat_no_abs_addr', {'feature_mode': 'no_abs_addr'}), ('feat_delta_only', {'feature_mode': 'delta_only'})]]",
+  "generated_at": "2026-08-23 20:26:45"
+}

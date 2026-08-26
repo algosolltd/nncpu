@@ -1,0 +1,13 @@
+{
+  "kind": "trace_battery",
+  "name": "exp_traces",
+  "seeds": 8,
+  "length": 2000,
+  "patterns": [
+    "kv_cache_append",
+    "embedding_lookup",
+    "agent_rag",
+    "token_stream"
+  ],
+  "generated_at": "2026-08-23 21:26:22"
+}

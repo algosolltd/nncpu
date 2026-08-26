@@ -1,0 +1,4 @@
+{
+  "description": "gate threshold in words [NN variants: [('thr_4', {'gate_threshold': 4.0}), ('thr_8', {'gate_threshold': 8.0}), ('thr_16', {'gate_threshold': 16.0}), ('thr_32', {'gate_threshold': 32.0}), ('thr_64', {'gate_threshold': 64.0})]]",
+  "generated_at": "2026-08-23 20:06:21"
+}

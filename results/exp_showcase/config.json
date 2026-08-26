@@ -1,0 +1,15 @@
+{
+  "kind": "trace_battery",
+  "name": "exp_showcase",
+  "seeds": 6,
+  "length": 2000,
+  "patterns": [
+    "random_read",
+    "sequential_read",
+    "token_stream",
+    "agent_rag",
+    "embedding_lookup",
+    "kv_cache_append"
+  ],
+  "generated_at": "2026-08-23 23:17:20"
+}

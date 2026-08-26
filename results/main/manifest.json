@@ -1,0 +1,16 @@
+{
+  "generated_at": "2026-08-23T18:16:07+00:00",
+  "nncpu_version": "3.0.0",
+  "git_revision": "205bac1462d05997c5ae02aaeefbd03ca79106be",
+  "git_dirty": true,
+  "python": "3.12.3",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "cpu_count": 8,
+  "versions": {
+    "numpy": "2.5.1",
+    "pandas": "2.3.3",
+    "scikit_learn": "1.8.0",
+    "matplotlib": "3.10.7",
+    "seaborn": "0.13.2"
+  }
+}

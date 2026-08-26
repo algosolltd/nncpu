@@ -1,0 +1,30 @@
+{
+  "name": "main",
+  "description": "Canonical paper dataset: 8 seeds, synthetic streams, numpy MLP",
+  "length": 3000,
+  "workloads": [
+    "sequential_read",
+    "strided_read",
+    "mixed_read_write",
+    "random_read",
+    "arithmetic_mix"
+  ],
+  "configs": [
+    "baseline",
+    "stride",
+    "nn"
+  ],
+  "runs": 8,
+  "seed": 0,
+  "machine": {
+    "fetch_cycles": 1,
+    "load_hit_cycles": 1,
+    "store_cycles": 1,
+    "mem_latency": 40,
+    "l1_lines": 32,
+    "line_size": 8,
+    "wb_limit": 16
+  },
+  "nn_kwargs": {},
+  "detail": false
+}

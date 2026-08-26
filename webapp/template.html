@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>nncpu · experiments</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+<style>
+  :root {
+    --bg:#f8fafc; --card:#ffffff; --line:#e2e8f0;
+    --base:#64748b; --stride:#2563eb; --nn:#d97706;
+    --text:#0f172a; --muted:#64748b;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; font: 15px/1.5 system-ui, sans-serif; background:var(--bg); color:var(--text); }
+  header { display:flex; align-items:center; gap:1rem; flex-wrap:wrap;
+           padding:.8rem 1.2rem; background:#fff; border-bottom:1px solid var(--line); }
+  header h1 { font-size:1.2rem; margin:0; }
+  header .sub { color:var(--muted); font-size:.85rem; }
+  .exp-pick { margin-left:auto; }
+  select, button { font:inherit; padding:.35rem .7rem; border:1px solid var(--line);
+                   border-radius:.45rem; background:#fff; }
+  nav.tabs { display:flex; gap:.3rem; overflow-x:auto; padding:.5rem 1.2rem;
+             background:var(--bg); border-bottom:1px solid var(--line); white-space:nowrap; }
+  nav.tabs button { border:none; padding:.45rem .9rem; border-radius:.5rem;
+                    cursor:pointer; font-weight:600; color:#334155; background:transparent; }
+  nav.tabs button.on { background:#fff; color:#0f172a; box-shadow:0 1px 3px rgba(0,0,0,.12);
+                       border:1px solid var(--line); }
+  main { padding:1rem 1.2rem 3rem; max-width:1200px; margin:0 auto; }
+  section.tab { display:none; }
+  section.tab.on { display:block; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:.7rem; margin:.6rem 0 1rem; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:.6rem; padding:.6rem .8rem; }
+  .card b { font-size:1.3rem; display:block; }
+  .card span { color:var(--muted); font-size:.8rem; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:1rem; }
+  .chart { background:var(--card); border:1px solid var(--line); border-radius:.7rem; padding:.6rem; min-height:360px; }
+  .chart.full { grid-column:1 / -1; }
+  table { border-collapse:collapse; width:100%; background:var(--card); border:1px solid var(--line);
+          border-radius:.6rem; overflow:hidden; }
+  th,td { padding:.45rem .6rem; text-align:left; border-bottom:1px solid var(--line); font-size:.9rem; }
+  th { background:#f1f5f9; }
+  .ok { color:#16a34a; font-weight:600; }
+  .bad { color:#dc2626; font-weight:600; }
+  .muted { color:var(--muted); }
+  .note { color:var(--muted); font-size:.85rem; margin:.2rem 0 1rem 0; }
+  .takeaway { background:var(--card); border:1px solid var(--line); border-left:4px solid var(--nn);
+              border-radius:.5rem; padding:.6rem .9rem; margin-bottom:1rem; }
+  .takeaway ul { margin:.3rem 0; padding-left:1.2rem; }
+  pre { font-size:.78rem; background:#0f172a; color:#cbd5e1; padding:.6rem;
+        border-radius:.5rem; overflow:auto; }
+</style>
+</head>
+<body>
+<header>
+  <h1>nncpu · experiments</h1>
+  <span class="sub" id="subtitle"></span>
+  <div class="exp-pick">
+    <label for="exp">Experiment </label>
+    <select id="exp"></select>
+  </div>
+</header>
+
+<nav class="tabs" id="tabs">
+  <button data-tab="compare" class="on">Compare</button>
+  <button data-tab="results">Results</button>
+  <button data-tab="phases">Phases</button>
+  <button data-tab="ablations">Ablations</button>
+  <button data-tab="stats">Statistics</button>
+</nav>
+
+<main>
+  <section class="tab on" id="tab-compare"></section>
+  <section class="tab" id="tab-results"></section>
+  <section class="tab" id="tab-phases"></section>
+  <section class="tab" id="tab-ablations"></section>
+  <section class="tab" id="tab-stats"></section>
+</main>
+
+<script>
+/* ---------------- data ---------------- */
+const DATA = /*__DATA__*/ {};
+
+const COLORS = { baseline: "#64748b", stride: "#2563eb", nn: "#d97706",
+                 nextline: "#0ea5e9", berti: "#a855f7" };
+const CONFIG_ORDER = ["baseline", "stride", "nextline", "berti", "nn"];
+const MEMWL = ["sequential_read", "strided_read", "mixed_read_write", "random_read", "phased_switch"];
+
+function expNames() {
+  const names = Object.keys(DATA.experiments || {});
+  const scans = Object.keys(DATA.scans || {}).filter(n => DATA.scans[n].scan_mean);
+  const phases = Object.keys(DATA.phases || {});
+  return [...names, ...scans, ...phases];
+}
+
+/* ---------------- tabs ---------------- */
+document.querySelectorAll("#tabs button").forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll("#tabs button").forEach(b => b.classList.remove("on"));
+    document.querySelectorAll("section.tab").forEach(s => s.classList.remove("on"));
+    btn.classList.add("on");
+    document.getElementById("tab-" + btn.dataset.tab).classList.add("on");
+  };
+});
+
+/* ---------------- chart helpers ---------------- */
+function barFigure(summary, metric, err, title, log) {
+  const traces = [];
+  for (const c of CONFIG_ORDER) {
+    const rows = summary.filter(r => r.config === c);
+    if (!rows.length) continue;
+    traces.push({
+      type: "bar", name: c, marker: { color: COLORS[c] },
+      x: rows.map(r => r.workload), y: rows.map(r => r[metric]),
+      error_y: err ? { type: "data", array: rows.map(r => r[err]) } : undefined,
+    });
+  }
+  return { data: traces, layout: { title, barmode: "group", template: "plotly_white",
+           yaxis: { type: log ? "log" : "linear", title: metric },
+           legend: { orientation: "h", y: 1.12 },
+           margin: { l: 50, r: 20, t: 55, b: 40 } } };
+}
+
+function speedupFigure(summary) {
+  const f = barFigure(summary.filter(r => r.config !== "baseline"), "speedup_mean", "speedup_std",
+                      "Speedup vs no-prefetch", false);
+  f.layout.shapes = [{ type: "line", xref: "paper", x0: 0, x1: 1, y0: 1, y1: 1,
+                       line: { color: "#94a3b8", dash: "dash" } }];
+  return f;
+}
+
+function render(elId, fig) { Plotly.newPlot(elId, fig.data, fig.layout, { responsive: true }); }
+
+/* ---------------- paper table ---------------- */
+function paperTable(summary) {
+  const rows = [];
+  const wls = MEMWL.filter(w => summary.some(r => r.workload === w));
+  for (const w of wls) {
+    const g = rows => rows.find(r => r.workload === w);
+    const cell = (c) => {
+      const r = g(summary.filter(x => x.config === c));
+      if (!r) return "";
+      const cyc = r.cycles_ci95 != null ? `${fmt0(r.cycles_mean)} ± ${fmt0(r.cycles_ci95)}` : fmt0(r.cycles_mean);
+      const sp = r.speedup_mean != null ? fmt2(r.speedup_mean) : "";
+      const hit = fmt3(r.hit_rate_mean);
+      return { cyc, sp, hit };
+    };
+    rows.push({ workload: w, base: cell("baseline"), stride: cell("stride"), nn: cell("nn") });
+  }
+  return rows;
+}
+
+function fmt0(x) { return Number(x).toLocaleString("en-US", { maximumFractionDigits: 0 }); }
+function fmt2(x) { return (+x).toFixed(2); }
+function fmt3(x) { return (+x).toFixed(3); }
+function geomean(s) {
+  const sp = s.filter(r => r.config === "nn" && r.speedup_mean >= 1).map(r => r.speedup_mean);
+  return sp.length ? Math.exp(sp.reduce((a, b) => a + Math.log(b), 0) / sp.length) : 1;
+}
+
+/* ---------------- helpers for layouts ---------------- */
+function kpiCards(html) {
+  return `<div class="cards">${html}</div>`;
+}
+function card(label, val, delta) {
+  return `<div class="card"><span>${label}</span><b>${val}</b>${delta ? `<span>${delta}</span>` : ""}</div>`;
+}
+
+/* ---------------- renderers ---------------- */
+function renderCompare() {
+  const el = document.getElementById("tab-compare");
+  const name = currentExp();
+  const e = DATA.experiments[name];
+  if (!e) { el.innerHTML = `<p class="muted">Select an experiment with summary data (e.g. final_30).</p>`; return; }
+  const s = e.summary;
+  const nn = s.filter(r => r.config === "nn");
+  const st = s.filter(r => r.config === "stride");
+
+  const take = ["Geometric-mean speedup vs no-prefetch: nn " + fmt2(geomean(s)) + "x"];
+  for (const w of MEMWL) {
+    const rn = nn.find(r => r.workload === w), rs = st.find(r => r.workload === w);
+    if (!rn) continue;
+    if (w === "random_read") {
+      take.push(`On <b>${w}</b> the NN matches no-prefetch exactly (${fmt2(rn.speedup_mean)}x) while stride degrades (${fmt2(rs ? rs.speedup_mean : 1)}x).`);
+    } else if (rs && rs.speedup_mean > 0) {
+      take.push(`On <b>${w}</b> the NN recovers ${Math.round(100 * rn.speedup_mean / rs.speedup_mean)}% of stride's benefit (NN ${fmt2(rn.speedup_mean)}x vs stride ${fmt2(rs.speedup_mean)}x).`);
+    }
+  }
+
+  const wls = MEMWL.filter(w => s.some(r => r.workload === w));
+  const pt = paperTable(s);
+  const rowsHtml = pt.map(r => `<tr><td>${r.workload}</td>
+      <td>${r.base.cyc}</td><td>${r.stride.cyc}</td><td>${r.stride.hit}</td>
+      <td>${r.nn.cyc}</td><td>${r.nn.hit}</td><td>${r.nn.sp}x</td></tr>`).join("");
+  el.innerHTML =
+    `<h3>Compare · <code>${name}</code></h3>` +
+    `<div class="takeaway"><ul>${take.map(t => `<li>${t}</li>`).join("")}</ul></div>` +
+    kpiCards([
+      card("NN speedup (geo mean)", fmt2(geomean(s)) + "x"),
+      card("Stride speedup (geo mean)", fmt2(geomean(s.filter(r => r.config === "stride"))) + "x"),
+      card("Workloads", wls.join(", ") || "—"),
+    ]) +
+    `<div class="grid2"><div class="chart" id="cmp_sp"></div><div class="chart" id="cmp_hr"></div></div>` +
+    `<div class="chart full" id="cmp_cy"></div>` +
+    `<h3>Paper table</h3>` +
+    `<table><thead><tr><th>workload</th><th>baseline (cyc)</th><th>stride (cyc)</th>` +
+    `<th>stride hit</th><th>nn (cyc)</th><th>nn hit</th><th>nn sp</th></tr></thead>` +
+    `<tbody>${rowsHtml}</tbody></table>`;
+  render("cmp_sp", speedupFigure(s));
+  render("cmp_hr", barFigure(s, "hit_rate_mean", "hit_rate_ci95", "L1 hit rate", false));
+  render("cmp_cy", barFigure(s, "cycles_mean", "cycles_ci95", "Total cycles (log)", true));
+}
+
+function renderResults() {
+  const el = document.getElementById("tab-results");
+  const name = currentExp();
+  const it = DATA.experiments[name] || DATA.scans[name] || DATA.phases[name];
+  if (!it) { el.innerHTML = `<p class="muted">Select an experiment.</p>`; return; }
+  if (it.summary) {
+    const s = it.summary;
+    el.innerHTML = `<h3>Results · <code>${name}</code></h3>` +
+      `<div class="grid2"><div class="chart" id="res_hr"></div><div class="chart" id="res_cy"></div></div>`;
+    render("res_hr", barFigure(s, "hit_rate_mean", "hit_rate_ci95", "L1 hit rate", false));
+    render("res_cy", barFigure(s, "cycles_mean", "cycles_ci95", "Total cycles (log)", true));
+  } else if (it.scan_mean) {
+    el.innerHTML = `<h3>Ablation · <code>${name}</code></h3>` +
+      `<div class="chart full" id="res_scan"></div>`;
+    render("res_scan", scanFigure(it.scan_mean));
+  } else if (it.phases) {
+    el.innerHTML = `<h3>Phases · <code>${name}</code></h3><div class="chart full" id="res_ph"></div>`;
+    render("res_ph", phasesHeatmapFigure(it.phases));
+  }
+}
+
+function scanFigure(scan_mean) {
+  const traces = [];
+  for (const c of ["stride", "nn"]) {
+    const pts = scan_mean.map(r => ({ label: r.label, w: r.workload, sp: c === "stride" ? r.stride_speedup : r.nn_speedup }));
+    const first = pts[0] ? pts[0].w : "";
+    // keep per-first-workload? show first workload subset for clarity
+    const rows = pts.filter(p => p.w === first);
+    traces.push({ type: "scatter", mode: "lines+markers", name: c,
+                  marker: { color: COLORS[c] }, x: rows.map(r => r.label), y: rows.map(r => r.sp) });
+  }
+  return { data: traces, layout: { title: "Speedup per variant", template: "plotly_white",
+           yaxis: { title: "speedup vs baseline" }, legend: { orientation: "h", y: 1.14 },
+           margin: { l: 50, r: 20, t: 55, b: 40 } } };
+}
+
+function phasesFigure(phases) {
+  const agg = {};
+  for (const r of phases) (agg[r.config + "|" + r.phase] = agg[r.config + "|" + r.phase] || []).push(r.hit_rate);
+  const keys = ["baseline", "stride", "nn"].filter(c => phases.some(r => r.config === c));
+  const xs = [...new Set(phases.map(r => r.phase))].sort((a, b) => a - b);
+  const kindOf = {};
+  for (const r of phases) kindOf[r.phase] = r.phase_kind;
+  const dash = { baseline: "dash", stride: "solid", nn: "solid" };
+  const traces = keys.map(c => {
+    const ys = xs.map(x => { const a = agg[c + "|" + x]; return a ? a.reduce((a, b) => a + b, 0) / a.length : null; });
+    return { type: "scatter", mode: "lines+markers", name: c, marker: { color: COLORS[c] },
+             line: { width: 3, dash: dash[c] || "solid" }, x: xs, y: ys };
+  });
+  const shapes = [], annotations = [];
+  const noisy = [...new Set(phases.filter(r => r.phase_kind === "noisy").map(r => r.phase))];
+  for (const x of noisy) {
+    shapes.push({ type: "rect", xref: "x", x0: x - .5, x1: x + .5, y0: 0, y1: 1,
+                  fillcolor: "rgba(148,163,184,.22)", line: { width: 0 } });
+    annotations.push({ x: x, y: 1.03, text: "noisy", showarrow: false,
+                       font: { size: 10, color: "#64748b" }, yanchor: "top" });
+  }
+  return { data: traces, layout: {
+    title: "Hit rate per phase (grey = noisy / unpredictable)",
+    template: "plotly_white",
+    yaxis: { range: [0, 1.05], title: "hit rate" },
+    xaxis: { title: "phase", tickmode: "array",
+             tickvals: xs, ticktext: xs.map(x => kindOf[x] === "noisy" ? "rnd" : "seq") },
+    shapes, annotations, showlegend: true,
+    legend: { orientation: "h", y: 1.12 },
+    margin: { l: 50, r: 20, t: 60, b: 40 } } };
+}
+
+function phasesHeatmapFigure(phases) {
+  const cfg = ["baseline", "stride", "nn"].filter(c => phases.some(r => r.config === c));
+  const xs = [...new Set(phases.map(r => r.phase))].sort((a, b) => a - b);
+  const kindOf = {};
+  for (const r of phases) kindOf[r.phase] = r.phase_kind;
+  const mean = (c, x) => {
+    const a = phases.filter(r => r.config === c && r.phase === x).map(r => r.hit_rate);
+    return a.length ? a.reduce((a, b) => a + b, 0) / a.length : null;
+  };
+  const z = cfg.map(c => xs.map(x => mean(c, x)));
+  return { data: [{
+    type: "heatmap", x: xs, y: cfg, z,
+    zmin: 0, zmax: 1,
+    colorscale: [[0, "#dc2626"], [0.5, "#facc15"], [1, "#16a34a"]],
+    text: z.map(row => row.map(v => v == null ? "" : (+v).toFixed(3))),
+    texttemplate: "%{text}", textfont: { size: 11 },
+    hovertemplate: "phase %{x}<br>%{y}: %{text}<extra></extra>",
+  }], layout: {
+    title: "Hit rate heatmap · config × phase (green = hits, red = misses)",
+    template: "plotly_white",
+    xaxis: { title: "phase", tickmode: "array",
+             tickvals: xs, ticktext: xs.map(x => kindOf[x] === "noisy" ? "rnd" : "seq") },
+    yaxis: { autorange: "reversed" },
+    margin: { l: 90, r: 20, t: 60, b: 40 } } };
+}
+
+function phasesBarFigure(phases) {
+  const agg = {};
+  for (const r of phases) (agg[r.config + "|" + r.phase_kind] = agg[r.config + "|" + r.phase_kind] || []).push(r.hit_rate);
+  const kinds = ["predictable", "noisy"];
+  const colors = { baseline: "#64748b", stride: "#2563eb", nn: "#d97706" };
+  const traces = ["baseline", "stride", "nn"].filter(c => phases.some(r => r.config === c)).map(c => ({
+    type: "bar", name: c, marker: { color: colors[c] },
+    x: kinds, y: kinds.map(k => { const a = agg[c + "|" + k]; return a ? a.reduce((a, b) => a + b, 0) / a.length : null; })
+  }));
+  return { data: traces, layout: {
+    title: "Mean hit rate by phase kind",
+    template: "plotly_white", barmode: "group",
+    yaxis: { range: [0, 1.05], title: "hit rate" },
+    legend: { orientation: "h", y: 1.12 },
+    margin: { l: 50, r: 20, t: 60, b: 40 } } };
+}
+
+function renderPhases() {
+  const el = document.getElementById("tab-phases");
+  const entries = Object.entries(DATA.phases || {});
+  if (!entries.length) { el.innerHTML = `<p class="muted">No phased data — run the battery.</p>`; return; }
+  const [name, it] = entries[0];
+  el.innerHTML = `<h3>Phases · <code>${name}</code></h3>
+     <p class="note"><b>What to look at:</b> in grey (noisy) phases the NN stays at
+     baseline and <i>stride falls below it</i>; in white (predictable) phases stride and
+     NN both reach near 1.0. That is the confidence gate doing its job.</p>
+     <div class="chart" id="ph_bar"></div>
+     <div class="chart" id="ph_heat" style="margin-top:1rem"></div>`;
+  render("ph_bar", phasesBarFigure(it.phases));
+  render("ph_heat", phasesHeatmapFigure(it.phases));
+}
+
+function renderAblations() {
+  const el = document.getElementById("tab-ablations");
+  const names = Object.keys(DATA.scans || {});
+  if (!names.length) { el.innerHTML = `<p class="muted">No ablation scans recorded.</p>`; return; }
+  const sel = names.includes("exp_feature_ablation") ? "exp_feature_ablation" : names[0];
+  el.innerHTML = `<h3>Ablations · <code>${sel}</code></h3>
+     <div class="chart full" id="abl_fig"></div>
+     <div id="abl_tbl" style="margin-top:1rem"></div>`;
+  render("abl_fig", scanFigure(DATA.scans[sel].scan_mean));
+  const tbl = document.createElement("div");
+  tbl.innerHTML = `<table><thead><tr><th>variant</th><th>workload</th><th>stride sp</th><th>nn sp</th></tr></thead><tbody>` +
+    DATA.scans[sel].scan_mean.map(r =>
+      `<tr><td>${r.label}</td><td>${r.workload}</td><td>${fmt2(r.stride_speedup)}</td><td>${fmt2(r.nn_speedup)}</td></tr>`).join("") +
+    "</tbody></table>";
+  el.appendChild(tbl);
+}
+
+function renderStats() {
+  const el = document.getElementById("tab-stats");
+  const rows = DATA.statistics || [];
+  if (!rows.length) { el.innerHTML = `<p class="muted">Run ` + "`" + "python benchmarks/stat_tests.py" + "`" + ` first.</p>`; return; }
+  const wn = rows.filter(r => r.comparison === "nn_vs_baseline").length;
+  const wl = rows.filter(r => r.comparison === "nn_vs_baseline" && r.p_value != null && r.p_value < 0.05).length;
+  const badStride = rows.filter(r => r.comparison === "stride_vs_baseline" && r.median_diff_cycles > 0 && r.p_value != null && r.p_value < 0.05).length;
+  el.innerHTML =
+    `<h3>Statistics · paired Wilcoxon (final_30)</h3>` +
+    kpiCards([
+      card("NN beats baseline", `${wl}/${wn} workloads`, "p < 0.05"),
+      card("Stride WORSE than baseline", badStride, "poor on random_read"),
+      card("NN == baseline", rows.filter(r => r.comparison === "nn_vs_baseline" && r.p_value == null).length, "random (identical)"),
+    ]) +
+    `<table><thead><tr><th>workload</th><th>comparison</th><th>median diff (cyc)</th><th>p</th><th>sig</th></tr></thead><tbody>` +
+    rows.map(r => `<tr><td>${r.workload}</td><td>${r.comparison}</td>
+      <td>${r.median_diff_cycles != null ? fmt0(r.median_diff_cycles) : "—"}</td>
+      <td>${r.p_value != null ? (+r.p_value).toExponential(1) : "identical"}</td>
+      <td class="${r.p_value != null && r.p_value < 0.05 ? (r.median_diff_cycles > 0 && r.comparison.includes("stride_vs") ? "bad" : "ok") : ""}">${r.p_value == null ? "" : (r.p_value < 0.05 ? "✓" : "n.s.")}</td></tr>`).join("") +
+    "</tbody></table>";
+}
+
+/* ---------------- selection ---------------- */
+let current = null;
+function currentExp() { return current || expNames()[0] || ""; }
+function refresh() {
+  const sel = document.getElementById("exp");
+  sel.innerHTML = expNames().map(n => `<option value="${n}">${n}</option>`).join("");
+  const cv = expNames().includes(current) ? current : expNames()[0];
+  if (cv) sel.value = cv;
+  document.getElementById("subtitle").textContent =
+    `${expNames().length} recorded experiments`;
+}
+function renderAll() {
+  renderCompare();
+  renderResults();
+  renderPhases();
+  renderAblations();
+  renderStats();
+}
+document.addEventListener("DOMContentLoaded", () => {
+  refresh();
+  const sel = document.getElementById("exp");
+  sel.onchange = () => { current = sel.value; renderAll(); };
+  renderAll();
+});
+</script>
+</body>
+</html>

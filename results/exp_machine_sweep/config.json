@@ -1,0 +1,4 @@
+{
+  "description": "L1 size / line size / DRAM latency [machine overrides: [('l1_16', {'l1_lines': 16}), ('l1_64', {'l1_lines': 64}), ('l1_32_lat20', {'mem_latency': 20}), ('l1_32_lat80', {'mem_latency': 80}), ('line_4', {'line_size': 4}), ('line_16', {'line_size': 16})]]",
+  "generated_at": "2026-08-23 20:07:54"
+}

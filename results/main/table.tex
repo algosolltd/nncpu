@@ -1,0 +1,17 @@
+\begin{table}[t]
+  \centering
+  \caption{\texttt{nncpu} experiment summary.  Cycles are the
+  mean over seeds with 95\% CI; hit is the mean L1 hit rate;
+  speedup is relative to the baseline (no-prefetch) mean.
+  \label{tab:results}}
+  \begin{tabular}{lccccccccc}
+    \textbf{Workload} & \textbf{Baseline cycles} & \textbf{Hit} & \textbf{Speedup} & \textbf{Nn cycles} & \textbf{Hit} & \textbf{Speedup} & \textbf{Stride cycles} & \textbf{Hit} & \textbf{Speedup} \\
+    \midrule
+    \texttt{arithmetic_mix} & 15,000 $\pm$ 0 & 0.000 & 1.00$\times$ & 15,000 $\pm$ 0 & 0.000 & 1.00$\times$ & 15,000 $\pm$ 0 & 0.000 & 1.00$\times$ \\
+    \texttt{mixed_read_write} & 65,984 $\pm$ 0 & 0.500 & 1.00$\times$ & 12,076 $\pm$ 1370 & 0.961 & 5.58$\times$ & 7,562 $\pm$ 0 & 0.999 & 8.73$\times$ \\
+    \texttt{random_read} & 110,988 $\pm$ 0 & 0.103 & 1.00$\times$ & 110,988 $\pm$ 0 & 0.103 & 1.00$\times$ & 113,328 $\pm$ 0 & 0.083 & 0.98$\times$ \\
+    \texttt{sequential_read} & 20,625 $\pm$ 0 & 0.875 & 1.00$\times$ & 6,166 $\pm$ 35 & 0.999 & 3.35$\times$ & 6,039 $\pm$ 0 & 1.000 & 3.42$\times$ \\
+    \texttt{strided_read} & 123,000 $\pm$ 0 & 0.000 & 1.00$\times$ & 14,526 $\pm$ 1464 & 0.927 & 8.65$\times$ & 6,117 $\pm$ 0 & 0.999 & 20.11$\times$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}

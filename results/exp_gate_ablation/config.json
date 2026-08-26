@@ -1,0 +1,4 @@
+{
+  "description": "confidence gate on/off [NN variants: [('gate_off', {'confidence_gate': False}), ('gate_on', {'confidence_gate': True})]]",
+  "generated_at": "2026-08-23 20:05:24"
+}
