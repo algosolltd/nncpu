@@ -100,9 +100,13 @@ adds asynchronous latency, 8-way profiles, memory issue bandwidth, finite
 prefetch MSHRs, lookahead, a demand-only shadow cache, and correct experimental
 units.
 
-The strongest holdout result is a predictor-independent regularity filter:
-over the last 16 deltas it issues only when the dominant delta has at least
-35% support. Parameters were selected on seeds 0–9 and evaluated on 10–39.
+The audit's strongest result is now negative and cross-model. A
+predictor-independent regularity filter issues only when the dominant delta
+has at least 35% support in the last 16 deltas. Parameters were selected on
+local seeds 0–9 and evaluated on 10–39, where the filter looked beneficial.
+The same mechanism was then ported to native ChampSim and tested on a frozen
+nine-program SPEC CPU2017 holdout using public DPC-3 traces, 50M warm-up and
+200M measured instructions.
 
 | Constrained profile, lookahead 8 | filtered stride vs stride | traffic reduction |
 |----------------------------------|--------------------------:|------------------:|
@@ -114,8 +118,21 @@ over the last 16 deltas it issues only when the dominant delta has at least
 The matched NN comparison is mostly negative: it is indistinguishable from
 the classical filtered control on random, about 1.10x faster on one timed KV
 condition, but substantially slower on strided and mixed traffic. This is
-evidence for admission control and careful attribution—not proof of hardware
-speedup. Native ChampSim/SPEC/GAP evaluation remains the next validity gate.
+evidence for careful attribution—not proof of neural superiority.
+
+The native result exposes a second failure. Relative to matched official
+stride, the gate removes 36.77% of accepted L1D prefetches and raises accuracy
+from 10.64% to 15.62%, but reduces LLC prefetch misses by only 6.85%, changes
+DRAM reads by just −0.083%, and loses 0.566% geometric-mean IPC. Raw and gated
+stride still beat no-prefetch by 6.69% and 6.09%, respectively. The publishable
+claim is that better prefetch proxy metrics do not establish a better endpoint.
+
+Reproduce the native summary from all 36 raw runs with:
+
+```bash
+python champsim/verify_results.py \
+  --results results/champsim_holdout_standard
+```
 
 Compile from `paper/` with `pdflatex main.tex && pdflatex main.tex`.
 
@@ -127,6 +144,7 @@ python -m pytest tests -q            # unit, integration and evidence tests
 python main.py                       # default experiment (stored under results/)
 python -m benchmarks.verify_paper --seeds 1   # source/artifact/claim parity
 python -m benchmarks.verify_research          # matched-control holdout artifact
+python champsim/verify_results.py --results results/champsim_holdout_standard
 
 # static dashboard (no server needed to view)
 python webapp/make_dashboard.py      # builds dashboard.html from results/
@@ -188,8 +206,9 @@ prefetch accuracy, and speedup per config.
 * a derived/value-prediction MLP for the arithmetic units,
 * turning the confidence gate into an explicit forget/re-learn policy,
 * a real cycle-by-cycle pipelined front-end (fetch/decode/exec/commit),
-* plugging real traces (SPEC, ChampSim) into the same prefetcher
-  interface, and comparing against published prefetchers (see below).
+* all-SimPoint weighted ChampSim evaluation and multicore interference,
+* RTL synthesis of the admission gate and measured energy,
+* independent confirmation in a second simulator or on hardware.
 
 ## License
 

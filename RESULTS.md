@@ -2,6 +2,49 @@
 
 ## Current matched-control finding
 
+### Native frozen holdout
+
+The primary external artifact is `results/champsim_holdout_standard/`: 36
+native ChampSim runs over nine previously unobserved SPEC CPU2017 programs,
+using the highest-weight public DPC-3 SimPoint per program, 50M warm-up and
+200M measured retired instructions. The gate-disabled port is exactly equal to
+official `ip_stride` on every recorded output field and every trace.
+
+Regularity-gated stride versus matched raw stride:
+
+| endpoint / proxy | holdout result |
+|---|---:|
+| geometric-mean IPC ratio | 0.994336 (−0.566%) |
+| bootstrap 95% CI | 0.984451–0.999997 |
+| wins / losses; exact sign p | 4 / 5; 1.0 |
+| accepted L1D prefetches | −36.77% aggregate |
+| L2C / LLC prefetch misses | −7.33% / −6.85% |
+| DRAM read requests | −0.083% |
+| accepted-prefetch accuracy | 10.64% → 15.62% |
+| useful-prefetch retention | 92.83% |
+
+Raw stride and gated stride are 1.06691x and 1.06087x faster than no L1D
+prefetching. The gate's average cost is dominated by `gcc` (−4.37%); all other
+gate/raw ratios are 0.99626–1.00076, explaining why the magnitude-sensitive
+bootstrap and direction-only sign test differ. Every trace's DRAM change is
+within the frozen ±1% descriptor.
+
+The scientifically defensible conclusion is not that the gate saves memory
+bandwidth. It improves shallow proxy metrics, but most suppressed prefetches
+either never descend the hierarchy or return as demand traffic. This result
+confirms the pre-specified methodological prediction that accepted-prefetch
+count and accuracy cannot substitute for endpoint measurements.
+
+Verify raw reconstruction, official-control equality, frozen predictions,
+source/config hashes, and optionally binary/trace hashes with:
+
+```bash
+python champsim/verify_results.py \
+  --results results/champsim_holdout_standard
+```
+
+### Local matched-control study
+
 The canonical research artifact is `results/research_gate_validation/`:
 21,240 raw rows, development seeds 0–9, disjoint holdout seeds 10–39, three
 machine profiles, and a complete lookahead sensitivity sweep. Repeated

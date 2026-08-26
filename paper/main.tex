@@ -9,7 +9,7 @@
 
 \begin{document}
 \title{The Gate, Not the Network?\\
-A Matched-Control Audit of Learned Cache Prefetching}
+A Matched-Control and Endpoint-Metric Audit of Learned Prefetching}
 \author{\IEEEauthorblockN{Simone Jarno Casartelli and Enrico Lopedoto}
 \IEEEauthorblockA{\textit{Algorithmica Solutions}\\
 \texttt{simone@algorithmicasolutions.com},
@@ -17,149 +17,167 @@ A Matched-Control Audit of Learned Cache Prefetching}
 \maketitle
 
 \begin{abstract}
-Learned cache prefetchers are often evaluated against classical predictors
-that always issue requests. This confounds address prediction with admission:
-a learned system can appear safer simply because it declines to prefetch.
-We audit a streaming MLP delta predictor using matched classical controls,
-each receiving the same confidence policy, and a simulator that accounts for
-prefetch completion latency, set associativity, issue bandwidth, finite
-prefetch MSHRs, lookahead, useful coverage, late requests, and pollution.
+Learned cache prefetchers are often compared with classical predictors that
+always issue requests. This confounds address prediction with admission: a
+learned system may appear safer because it declines to prefetch. We audit an
+online MLP delta predictor using classical controls with matched admission,
+then test the mechanism in native ChampSim.
 
-The original neural interpretation does not survive the matched comparison.
-On random traffic the MLP and gated stride are statistically indistinguishable;
-on a timed strided stream the MLP requires approximately $1.96\times$ as many
-cycles as a matched non-neural control. It has a conditional $1.101\times$
-advantage on one KV-cache pattern, but no general lead. This negative result
-motivates a predictor-independent alternative: admit requests when the
-dominant delta occupies at least 35\% of a 16-access window. Parameters are
-selected on seeds 0--9 and evaluated on holdout seeds 10--39. In a
-bandwidth/MSHR-constrained profile, the filter improves stride by
-$1.088\times$ on random and $1.076\times$ on phased traffic while removing
-99.55\% and 83.07\% of accepted prefetch traffic. It leaves selected regular
-controls unchanged but has explicit counterexamples. We present a reproducible
-negative result and a promising admission control, not a hardware claim.
+The broad neural interpretation does not survive. On random traffic the MLP
+and matched classical control are statistically indistinguishable, while
+classical controls are substantially faster on several regular streams. A
+simple dominant-delta admission gate nevertheless looks promising in the
+local model. We therefore freeze a native holdout before observation: the
+highest-weight public DPC-3 SimPoint for each of the nine remaining SPEC
+CPU2017 programs, with 50 million warm-up and 200 million measured
+instructions. The gate-disabled port matches official \texttt{ip\_stride}
+exactly. On holdout, gating removes 36.77\% of accepted L1D prefetches and
+raises accuracy from 10.64\% to 15.62\%, but reduces LLC prefetch misses by
+only 6.85\%, changes DRAM reads by $-0.083\%$, and loses 0.566\%
+geometric-mean IPC. Direction is heterogeneous (four wins, five losses;
+sign-test $p=1$). Better proxy metrics therefore establish neither lower
+off-chip traffic nor higher performance. The defensible contribution is a
+reproducible attribution and endpoint-metric audit, not a neural, energy, or
+deployment claim.
 \end{abstract}
 
 \begin{IEEEkeywords}
 cache prefetching, confidence, matched controls, negative results,
-reproducibility
+reproducibility, ChampSim
 \end{IEEEkeywords}
 
 \section{Introduction}
-An inaccurate prefetch consumes bandwidth and cache capacity. Confidence can
-reduce this cost by suppressing requests on unpredictable streams. A learned
-mechanism naturally exposes a confidence signal, but comparing it with an
-always-on stride prefetcher changes prediction and admission simultaneously.
-Their combined effect cannot be attributed to the neural network.
+Prefetching trades latency for bandwidth and cache capacity
+\cite{memorywall,stride}. Confidence mechanisms can suppress requests on
+unpredictable streams, but they complicate attribution. Comparing a gated
+learned predictor with an always-on stride predictor changes both address
+prediction and admission. Any apparent neural advantage may instead be a gate
+advantage.
 
-This paper began as a positive study of a 6--32--1 online MLP that predicts
-the next address delta. An audit found that the largest speedups assumed
-instantaneous prefetch completion and that the decisive random-stream result
-lacked a classical predictor with the same gate. We make those failures the
-research question:
+This work began as a positive study of a 6--32--1 online MLP that predicts the
+next address delta. An audit found two decisive confounds: the largest
+speedups assumed zero-latency prefetch completion, and the random-stream result
+lacked a classical predictor with the same gate. We ask:
 
 \begin{quote}
-What remains of a learned-prefetching result after admission, timeliness,
-bandwidth, lookahead, cache organization, and statistical unit are matched?
+What remains after prediction, admission, latency, contention, lookahead,
+cache organization, experimental unit, and endpoint metric are separated?
 \end{quote}
 
 Our contributions are:
 \begin{itemize}
-\item a matched-control evaluation separating the MLP from its gate;
-\item a latency- and contention-aware simulator with a demand-only shadow L1;
-\item a 16-entry dominant-delta admission filter tuned on seeds 0--9 and
-evaluated on 30 disjoint holdout seeds;
-\item machine-verifiable raw results, claims, hashes, and statistics that
-collapse repeated deterministic traces into one experimental unit.
+\item matched controls that isolate the MLP from its admission policy;
+\item a latency- and contention-aware local simulator with a demand-only
+shadow cache and explicit lateness, pollution, and drop accounting;
+\item a compact, predictor-independent dominant-delta gate, tuned on local
+development seeds and evaluated on disjoint local holdout seeds;
+\item a native runtime-module port whose disabled form is output-identical to
+official ChampSim \texttt{ip\_stride}; and
+\item a frozen nine-program native holdout showing that fewer accepted
+prefetches and higher accuracy do not imply less DRAM traffic or more IPC.
 \end{itemize}
 
-The principal finding is negative: the evidence does not support a general
-neural advantage. The constructive result is narrower: admission based on
-recent delta regularity removes most useless traffic without the large
-false-negative cost of the original prediction-error gate.
+The first result is an attribution failure: the evidence does not support a
+general neural advantage. The second is a metric failure: the admission gate
+improves common proxy metrics without improving the memory-system endpoint.
 
-\section{Machine and measurement model}
+\section{Local audit model}
+\subsection{Machine and measurement}
 \nncpu{} executes an in-order scalar instruction stream. Fetch costs one
-cycle; an L1 hit costs one and a demand miss has 40-cycle memory latency. The
-L1 holds 32 lines of eight 64-bit words under LRU. The ideal profile is fully
-associative and completes prefetches immediately; it is retained only as an
-upper-bound control.
+cycle; an L1 hit costs one and a demand miss has 40-cycle latency. The L1 has
+32 lines of eight 64-bit words. An ideal, fully associative, zero-prefetch-
+latency profile is retained only as an upper-bound control.
 
-Timed profiles use an 8-way L1 and asynchronous 40-cycle prefetches. A demand
-that catches an in-flight request waits for its remaining latency. The
-\emph{timed} profile starts one memory request per cycle and has 16 prefetch
-MSHRs. The \emph{constrained} profile starts one request every four cycles and
-has eight. Demand and prefetches share the issue schedule. Excess requests are
-recorded as dropped rather than counted as memory traffic.
+Timed profiles use an 8-way L1 and asynchronous 40-cycle prefetches. Demand
+that catches an in-flight request waits for its remaining latency. A timed
+profile starts one memory request per cycle with 16 prefetch MSHRs; a
+constrained profile starts one every four cycles with eight. Demand and
+prefetch share the issue schedule. Excess prefetches are dropped.
 
-A same-geometry shadow L1 is updated only by demand accesses. Comparing actual
-and shadow outcomes identifies useful hits (actual hit, shadow miss), pollution
-misses (actual miss, shadow hit), late prefetches, redundant requests, and
-MSHR drops. These measurements are local to the declared model; they do not
-replace an out-of-order cycle-accurate simulator.
+A same-geometry shadow L1 receives demand accesses only. Comparing real and
+shadow outcomes identifies useful hits, pollution misses, late prefetches,
+redundant requests, and MSHR drops. This model improves attribution but is not
+an out-of-order microarchitectural simulator.
 
-\section{Predictors and matched admission}
+\subsection{Predictors and matched admission}
 Global stride predicts the previous delta. A bounded delta-Markov control
-records which delta most often follows the current delta. These are controlled
-models rather than faithful reproductions of published hardware. The learned
-predictor is an online 6--32--1 ReLU MLP trained on a 64-sample replay buffer.
-It receives opcode, static PC when present, address, two deltas, and a bias;
-its next-delta target is clamped to $[-16,16]$ words.
+records which delta most often follows the current delta. The learned model is
+an online 6--32--1 ReLU MLP trained from a 64-sample replay buffer. It receives
+opcode, static PC when present, address, two deltas, and a bias; its target is
+clamped to $[-16,16]$ words. A predictor-independent lookahead adapter keeps
+prediction distance separate from admission.
 
-All mechanisms expose one next-address prediction. A predictor-independent
-adapter extrapolates its delta by lookahead distance $D$, keeping prediction,
-admission, and latency coverage as separate mechanisms.
+The original prediction-error gate admits when median recent error is at most
+half the characteristic delta magnitude over 48 accesses. We apply the same
+gate to stride and delta-Markov, and wrapped predictors continue training
+while closed. This is the matched control missing from the original claim.
 
-\subsection{Matched prediction-error gate}
-The original gate admits a request when median recent prediction error is no
-greater than half the characteristic delta magnitude over 48 accesses. We
-apply the identical gate to stride and delta-Markov. Wrapped predictors keep
-updating while requests are suppressed, allowing phase recovery. This control
-isolates what the MLP contributes beyond admission.
-
-\subsection{Dominant-delta regularity gate}
-Prediction error rejects useful multimodal streams. We instead define recent
-regularity
+Prediction error can reject repeated multimodal streams. We therefore define
+recent regularity
 \begin{equation}
  R_t=\frac{\max_d |\{i:d_i=d\}|}{W}.
 \end{equation}
-After an eight-access warm-up, the filter admits a request iff
-$R_t\ge0.35$ for $W=16$. It stores 16 signed deltas plus a small frequency
-table, requires no predictor output, and continues updating the wrapped
-predictor while closed. Window and threshold were chosen on development seeds
-0--9; every confirmatory number uses seeds 10--39.
+After eight deltas, the gate admits iff $R_t\ge0.35$ for $W=16$. Window and
+threshold were chosen on development seeds 0--9; local confirmatory numbers
+use seeds 10--39.
+
+An exact incremental implementation with a 16-entry signed 64-bit FIFO and a
+16-entry associative histogram requires 2,153 state bits (269.1 bytes, 0.41\%
+of the DPC-3 64-KiB budget). This is storage accounting, not area, timing, or
+energy synthesis; comparator and update logic are not costed.
 
 \section{Experimental design}
+\subsection{Local paired study}
 We evaluate five synthetic streams, four controlled ML/agent patterns, and
-three instrumented algorithm traces. The latter record conceptual word
-accesses from binary search, matrix multiplication, and merge sort; they are
-not native SPEC/GAP traces. Every stochastic workload is materialized once per
-seed and shared byte-for-byte by all configurations.
+three instrumented algorithm traces. Every stochastic stream is materialized
+once per seed and shared byte-for-byte across configurations. Ideal uses
+lookahead $D=1$; predeclared timed and constrained points use $D=16$ and
+$D=8$, with the full $D\in\{1,8,16,32\}$ sweep retained.
 
-The ideal profile uses $D=1$. Predeclared timed and constrained points use
-$D=16$ and $D=8$; the artifact also retains the complete
-$D\in\{1,8,16,32\}$ sensitivity sweep. We report paired cycle ratio
+A SHA-256 identifies each stream. Repeated deterministic runs on one hash are
+one experimental unit rather than pseudo-replicates; stochastic streams and
+MLP seeds remain distinct. We report the paired cycle ratio
 \begin{equation}
  B(A,C)=\operatorname{mean}_s C_s/A_s,
 \end{equation}
-so $B>1$ favors candidate $A$. Exact two-sided sign tests discard ties and
-receive one Holm correction across the saved comparison family.
+where $B>1$ favors candidate $A$ over control $C$. Exact sign tests receive
+one Holm correction over the saved comparison family.
 
-A SHA-256 identifies each materialized stream. Repeated deterministic
-classical runs on the same hash count as one experimental unit; distinct
-stochastic streams and MLP seeds remain separate. This prevents repeated
-traces from creating false statistical precision.
+\subsection{Frozen native holdout}
+We implement the gate as a ChampSim runtime L1D prefetcher and use official
+\texttt{develop} commit \texttt{e6530c7} \cite{champsim}. One binary selects
+no L1D prefetch, official \texttt{ip\_stride}, gate-disabled matched stride,
+or gated stride through JSON. The disabled module must match official
+\texttt{ip\_stride} exactly on instructions, cycles, cache metrics, prefetch
+metrics, and DRAM reads/writes.
+
+After an abbreviated eleven-program external development pilot, we freeze the
+nine SPEC CPU2017 programs not yet observed. Each uses its highest-weight
+public DPC-3 SimPoint \cite{dpc3}. The primary run warms 50 million and
+measures 200 million retired instructions. One program is one independent
+unit; SimPoint weights select a trace and are not replicate counts.
+
+Before holdout, we predict that gating will (1) reduce aggregate accepted L1D
+prefetches and L2C/LLC prefetch misses, (2) increase accepted-prefetch accuracy
+while retaining most useful prefetches, (3) leave DRAM reads within a frozen
+$\pm1\%$ descriptive margin, and (4) not improve geometric-mean IPC. We report
+a deterministic 10,000-resample program bootstrap and an exact two-sided sign
+test. The $\pm1\%$ rule is not a formal equivalence test.
+
+ChampSim's ``requested'' counter includes queue retries, so accepted L1D
+prefetches use ``issued.'' L2C/LLC prefetch misses show how much accepted
+activity descends the hierarchy; total DRAM reads are the off-chip endpoint.
 
 \section{Results}
-\subsection{Matched controls falsify the broad neural claim}
+\subsection{Matched controls falsify broad neural superiority}
 Table~\ref{tab:nn} compares the MLP with regularity-filtered stride at timed
-$D=16$. On random traffic their difference is negligible and not significant.
-The MLP is conditionally better on KV but loses on most regular and mixed
-streams. The evidence therefore does not support general neural superiority.
+$D=16$. Random traffic is indistinguishable. The MLP has a conditional KV
+advantage but loses on most regular and mixed streams. No general neural lead
+survives the matched comparison.
 
 \begin{table}[t]
 \centering\small
-\caption{MLP vs. regularity-filtered stride, timed 8-way, $D=16$.
+\caption{MLP vs. regularity-filtered stride, local timed 8-way, $D=16$.
 $B>1$ favors the MLP; holdout seeds 10--39.}
 \label{tab:nn}
 \begin{tabular}{lrr}
@@ -178,106 +196,135 @@ token stream       & 0.94413 & MLP slower \\
 \end{tabular}
 \end{table}
 
-The KV result is useful: a bounded regressor can retain a local delta while
-ignoring gathers. It is not evidence of superiority because the best
-classical configuration depends strongly on profile and lookahead, and the
-MLP reverses sign under other selected conditions.
+The KV case suggests that a bounded regressor can preserve a local delta while
+ignoring gathers. It is a conditional mechanism, not evidence of superiority:
+the best classical configuration changes with profile and lookahead.
 
-\subsection{Regularity filtering survives holdout validation}
-Table~\ref{tab:regularity} gives the predeclared constrained $D=8$
-comparison. The filter leaves stride unchanged on selected regular controls.
-On random and phased streams it reduces traffic and pollution, yielding an
-8.84\% and 7.59\% cycle benefit over raw stride. It also improves the 30
-independently varied agent-RAG streams.
+\subsection{Local holdout suggests a useful gate}
+At constrained $D=8$, regularity-filtered stride beats raw stride by
+$1.08838\times$ on random, $1.07587\times$ on phased, and $1.01594\times$ on
+agent-RAG streams. Accepted-prefetch reductions are 99.55\%, 83.07\%, and
+20.86\%. Selected sequential, strided, mixed, embedding, and KV controls are
+unchanged. Timed $D=16$ gives $1.03964\times$ on random and $1.03298\times$
+on phased traffic, each with 30/30 paired wins.
+
+This is not a no-harm theorem. At ideal $D=1$ the gate slows agent RAG by
+1.30\%; on one deterministic merge-sort trace it is 5.95\% slower. Larger
+lookahead reverses that trace. These counterexamples motivate native endpoint
+validation rather than a positive local conclusion.
+
+\subsection{Native holdout invalidates the proxy inference}
+The matched raw module equals official \texttt{ip\_stride} on every recorded
+field and all nine programs: its paired IPC ratio is exactly 1 with nine ties.
+The gate comparison is therefore not an accidental reimplementation change.
+
+Table~\ref{tab:native} gives the frozen endpoint result. The gate removes
+36.77\% of accepted L1D prefetches and improves accuracy by 4.98 percentage
+points while retaining 92.83\% of useful prefetches. The apparent improvement
+shrinks to 7.33\% and 6.85\% fewer L2C and LLC prefetch misses and only 0.083\%
+fewer DRAM reads. Raw stride is $1.06691\times$ no-prefetch IPC; gated stride
+is $1.06087\times$. Direct gate/raw geometric-mean IPC is 0.99434 (bootstrap
+95\% CI 0.98445--0.999997).
 
 \begin{table}[t]
 \centering\small
-\caption{Regularity-filtered stride vs. stride, constrained 8-way, $D=8$.
-CI is 95\%; traffic is accepted-prefetch reduction.}
-\label{tab:regularity}
-\begin{tabular}{lrrr}
+\caption{Frozen native ChampSim holdout, gate vs. matched raw stride.
+Reductions are aggregate counts over nine equal-length programs.}
+\label{tab:native}
+\begin{tabular}{lr}
 \toprule
-workload & $B$ & 95\% CI & traffic reduction \\
+metric & gate vs. raw stride \\
 \midrule
-random read       & 1.08838 & $\pm0.00036$ & 99.55\% \\
-phased switch     & 1.07587 & $\pm0.00163$ & 83.07\% \\
-agent RAG         & 1.01594 & $\pm0.00128$ & 20.86\% \\
-embedding lookup  & 1.00000 & $\pm0$       & 0\% \\
-KV-cache append   & 1.00000 & descriptive  & 0\% \\
-sequential read   & 1.00000 & descriptive  & 0\% \\
-strided read      & 1.00000 & descriptive  & 0\% \\
-mixed read/write  & 1.00000 & descriptive  & 0\% \\
+geometric-mean IPC ratio & 0.99434 \\
+accepted L1D prefetches & $-36.77\%$ \\
+L2C prefetch misses & $-7.33\%$ \\
+LLC prefetch misses & $-6.85\%$ \\
+DRAM read requests & $-0.083\%$ \\
+accepted-prefetch accuracy & 10.64\% $\rightarrow$ 15.62\% \\
+useful-prefetch retention & 92.83\% \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-The qualitative result also holds at timed $D=16$: $B=1.03964$ on random
-and $B=1.03298$ on phased traffic, each with 30/30 paired wins. Applying the
-same filter to delta-Markov yields similar effects, so it is not stride-only.
+The IPC loss is not directionally universal. GCC loses 4.37\%; the other
+ratios range from 0.99626 to 1.00076. There are five losses and four wins, so
+the exact sign-test result is $p=1$. The bootstrap interval reflects the
+magnitude of GCC; the sign test reflects inconsistent direction. By contrast,
+every program changes DRAM reads by at most 0.524\%, within the frozen margin.
 
-\subsection{Counterexamples and sensitivity}
-The filter is not a no-harm theorem. At ideal $D=1$ it slows agent RAG by
-1.30\%. On the single deterministic merge-sort trace at $D=1$, filtered
-stride is 5.95\% slower. That is one descriptive trace, not 30 independent
-observations. Larger lookahead reverses the same trace. Binary search also
-changes sign across predictor and distance.
-
-This sensitivity is fundamental: an accurate request may arrive late, exceed
-MSHR capacity, or compete with demand. The artifact retains all distances and
-states the selected point instead of choosing the best row per workload.
+The correct interpretation is not ``gating saves memory bandwidth.'' Most
+suppressed prefetches either do not descend the hierarchy or return later as
+demand reads. Accuracy and L1D issue count are useful diagnostics, but they are
+not endpoint evidence.
 
 \section{Threats to validity}
-The main limitation is external validity. \nncpu{} is a deterministic
-latency-accounting in-order model, not ChampSim, gem5, or silicon. It omits an
-out-of-order window, TLBs, coherence, multiple cache levels, request
-prioritization, and predictor area/energy/critical-path cost. Classical
-predictors are abstractions. Algorithm traces are instrumented address
-sequences, while ML/agent streams are workload-shaped models.
+The native study improves external validity but is not silicon. It uses one
+highest-weight SimPoint for each of nine holdout programs, not all SimPoints;
+one ChampSim configuration; and no multicore interference. SPEC CPU2017 does
+not validate the workload-shaped ML/agent streams. Storage accounting is not
+RTL synthesis and establishes no energy or critical-path result.
 
-Internal validity is stronger: configurations are paired on exact stream
-hashes; demand and prefetch contend; MSHR drops, lateness, shadow coverage,
-and pollution are distinct; tuning and holdout seeds do not overlap; every
-table value is checked from raw rows. These properties justify claims about
-the declared model only.
+Internal validity is stronger. Local configurations share exact stream hashes
+and separate lateness, pollution, and drop metrics. Native configurations
+share one binary and trace; source, config, binary, and trace hashes are saved;
+raw stride matches official \texttt{ip\_stride} exactly; and predictions were
+frozen before holdout.
 
-The next evidence gate is native ChampSim integration with public traces,
-followed by SPEC/GAP where licensing permits, hardware-cost synthesis, and
-official baseline implementations. Until then, this is suitable as a
-reproducibility/negative-results or architecture-workshop study, not proof of
-deployable speedup.
+Custom cache-callback counts differ by up to 0.105\% on LBM even with identical
+retired-instruction counts. ChampSim changes phase at core retirement while
+requests remain in flight, so timing changes how many callbacks cross the
+boundary. We report this diagnostic but do not use it as an experimental unit
+or silently relax an equivalence test. Exact raw/official endpoint equivalence
+remains the hard invariant.
+
+Future evidence should use all-SimPoint weighting, additional cache and
+multicore configurations, a second simulator, and hardware synthesis. The
+current work supports a negative/methodological architecture paper, not a
+deployable performance or energy claim.
 
 \section{Reproducibility}
-The holdout artifact contains 21,240 raw rows under
-\texttt{results/research\_gate\_validation}. It records the generating
-commit, tracked-tree cleanliness, source/configuration SHA-256, raw rows,
-aggregates, contrasts, independent-unit counts, sign tests, and Holm
-adjustments. Machine-readable claims are in
-\texttt{paper/research\_claims.json}. Run
+The local artifact has 21,240 raw rows under
+\texttt{results/research\_gate\_validation}. The native artifact has 36 raw
+runs under \texttt{results/champsim\_holdout\_standard}. Both record source,
+configuration, unit, and result provenance. Native metadata additionally pins
+the ChampSim revision and binary, module, trace-list, and trace hashes. Run:
 \begin{verbatim}
 python -m benchmarks.verify_research
+python champsim/verify_results.py \
+  --results results/champsim_holdout_standard
 \end{verbatim}
-to recompute summaries and contrasts and check provenance and claims.
+The second command reconstructs every aggregate from raw JSON/logs, checks
+official-control equivalence, and evaluates the frozen predictions. Optional
+checkout and trace arguments verify external binary and trace hashes.
 
 \section{Conclusion}
 A matched control changes the interpretation of this learned-prefetching
-study. The MLP is neither generally safer nor generally faster; its convincing
+study. The MLP is neither generally safer nor generally faster; its persuasive
 random-stream behavior is reproduced by a classical predictor with the same
-admission policy. The defensible contribution is smaller: recent delta
-regularity is an inexpensive, predictor-independent signal that removes most
-harmful random traffic and improves phased traffic on disjoint holdout seeds.
-It also has documented counterexamples. This is an audit of attribution and a
-candidate admission mechanism; hardware validation remains required.
+admission policy. Native validation then exposes a second failure: a simple
+gate strongly improves accepted-prefetch count and accuracy, but DRAM reads do
+not materially change and mean IPC falls slightly on frozen holdout.
 
-\begin{thebibliography}{5}
-\bibitem{memorywall} W.~A. Wulf and S.~A. McKee, Hitting the memory wall:
-implications of the obvious, \emph{Computer Architecture News}, 1995.
-\bibitem{stride} T.-F. Chen and J.-L. Baer, Effective hardware-based data
-prefetching for high-performance processors, \emph{IEEE TC}, 1995.
-\bibitem{spp} J.~Kim et al., Path confidence based lookahead prefetching,
+Admission remains a possible local activity/performance trade-off. It is not,
+on this evidence, an off-chip bandwidth optimization. The publishable result
+is the matched-control, cross-model falsification and its machine-verifiable
+demonstration that proxy metrics must not substitute for endpoints.
+
+\begin{thebibliography}{7}
+\bibitem{memorywall} W.~A. Wulf and S.~A. McKee, ``Hitting the memory wall:
+Implications of the obvious,'' \emph{Computer Architecture News}, 1995.
+\bibitem{stride} T.-F. Chen and J.-L. Baer, ``Effective hardware-based data
+prefetching for high-performance processors,'' \emph{IEEE TC}, 1995.
+\bibitem{spp} J.~Kim et al., ``Path confidence based lookahead prefetching,''
 \emph{MICRO}, 2016.
-\bibitem{bingo} M.~Bakhshalipour et al., Bingo spatial data prefetching,
+\bibitem{bingo} M.~Bakhshalipour et al., ``Bingo spatial data prefetcher,''
 \emph{HPCA}, 2019.
-\bibitem{learning} M.~Hashemi et al., Learning memory access patterns,
+\bibitem{learning} M.~Hashemi et al., ``Learning memory access patterns,''
 \emph{ICML}, 2018.
+\bibitem{champsim} N.~Gober et al., ``The Championship Simulator:
+Architectural simulation for education and competition,'' arXiv:2210.14324,
+2022.
+\bibitem{dpc3} ``Third Data Prefetching Championship public traces,''
+\url{https://dpc3.compas.cs.stonybrook.edu/champsim-traces/speccpu/}.
 \end{thebibliography}
 \end{document}
