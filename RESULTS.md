@@ -1,5 +1,28 @@
 # Results
 
+## Speculative-decoding endpoint audit
+
+The frozen Qwen2.5 3B/0.5B CPU holdout contains 120 runs over eight HumanEval
+and GSM8K prompt units. Raising the matched draft-confidence gate from 0.8 to
+0.95 improves aggregate acceptance from 90.47% to 95.95%, but reduces
+geometric-mean throughput by 10.37% (0/8 wins, exact sign `p=0.0078125`). Gate
+0.8 is 1.0627x target-only; gate 0.95 is 0.9525x. This independently reproduces
+the paper's endpoint-metric failure in LLM inference: a stricter gate improves
+the shallow success ratio by proposing less work, yet worsens the user-facing
+endpoint.
+
+Design, related work, per-prompt results, numerical-output diagnostic, limits,
+and the proposed cross-domain paper framing are in
+[`docs/SPECULATIVE_DECODING_RESULTS.md`](docs/SPECULATIVE_DECODING_RESULTS.md).
+The integrated manuscript is in [`paper/cross_domain.tex`](paper/cross_domain.tex)
+with its compiled [`paper/cross_domain.pdf`](paper/cross_domain.pdf).
+Reconstruct the saved result with:
+
+```bash
+python3 benchmarks/specdec_endpoint_audit.py verify \
+  --output results/specdec_holdout_qwen_cpu
+```
+
 ## Current matched-control finding
 
 ### Native frozen holdout
