@@ -41,6 +41,12 @@ def gather(results: str) -> dict:
 
         if os.path.exists(summary_p):
             df = pd.read_csv(summary_p)
+            # Other result families may also publish a summary.csv with a
+            # different schema (for example speculative-decoding throughput).
+            # The cache dashboard must ignore those artifacts, not reinterpret
+            # their columns as cache experiment data.
+            if not {"workload", "config"}.issubset(df.columns):
+                continue
             rows = []
             for _, r in df.iterrows():
                 rows.append({

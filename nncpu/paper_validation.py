@@ -194,8 +194,9 @@ def validate_paper_artifact(
     report.add("generation_tree_clean", manifest.get("git_dirty") is False, f"git_dirty={manifest.get('git_dirty')!r}")
     report.add(
         "source_digest",
-        manifest.get("source_sha256") == source_digest(),
-        f"saved={manifest.get('source_sha256', '(missing)')} current={source_digest()}",
+        manifest.get("source_sha256") == source_digest(revision),
+        f"saved={manifest.get('source_sha256', '(missing)')} "
+        f"pinned={source_digest(revision)}",
     )
     report.add(
         "config_digest",

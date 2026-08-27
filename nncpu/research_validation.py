@@ -106,8 +106,8 @@ def validate_research_artifact(
     )
     report.add(
         "source_digest",
-        manifest.get("source_sha256") == source_digest(),
-        f"saved={manifest.get('source_sha256')} current={source_digest()}",
+        manifest.get("source_sha256") == source_digest(revision),
+        f"saved={manifest.get('source_sha256')} pinned={source_digest(revision)}",
     )
     report.add(
         "config_digest",
