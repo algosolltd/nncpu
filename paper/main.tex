@@ -283,15 +283,15 @@ current work supports a negative/methodological architecture paper, not a
 deployable performance or energy claim.
 
 \section{Reproducibility}
-The local artifact has 21,240 raw rows under
-\texttt{results/research\_gate\_validation}. The native artifact has 36 raw
-runs under \texttt{results/champsim\_holdout\_standard}. Both record source,
-configuration, unit, and result provenance. Native metadata additionally pins
-the ChampSim revision and binary, module, trace-list, and trace hashes. Run:
+The local artifact has 21,240 raw rows; the native artifact has 36 raw runs.
+Both record source, configuration, unit, and result provenance. Native metadata
+additionally pins the ChampSim revision and binary, module, trace-list, and
+trace hashes. Run:
 \begin{verbatim}
 python -m benchmarks.verify_research
 python champsim/verify_results.py \
-  --results results/champsim_holdout_standard
+  --results \
+  results/champsim_holdout_standard
 \end{verbatim}
 The second command reconstructs every aggregate from raw JSON/logs, checks
 official-control equivalence, and evaluates the frozen predictions. Optional
