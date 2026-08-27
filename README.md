@@ -127,6 +127,12 @@ DRAM reads by just −0.083%, and loses 0.566% geometric-mean IPC. Raw and gated
 stride still beat no-prefetch by 6.69% and 6.09%, respectively. The publishable
 claim is that better prefetch proxy metrics do not establish a better endpoint.
 
+The researched follow-on application is documented in
+[`docs/ALTERNATIVE_APPLICATION_UVM.md`](docs/ALTERNATIVE_APPLICATION_UVM.md):
+a regularity-guided dispatcher for GPU Unified Memory page migration, including
+candidate alternatives, primary sources, implementation seams, matched
+baselines, endpoint metrics, and a falsifiable validation protocol.
+
 Reproduce the native summary from all 36 raw runs with:
 
 ```bash
