@@ -189,6 +189,9 @@ implement a structurally similar pattern: use the learned model when confident,
 fall back otherwise. Our median-error gate is the prefetching instantiation of
 this predict-then-verify architecture, with the additional empirical finding
 that the gate's value is independent of the predictor behind it.
+PPF~\cite{ppf} corroborates this independently: a perceptron confidence
+gate on SPP yields 3.78\% IPC improvement (ISCA~2019), attributable to
+the filter rather than the underlying predictor.
 
 \section{System Design}
 \label{sec:design}
@@ -762,6 +765,10 @@ median) reduction in issued prefetches yields only 0.07\% fewer DRAM reads.
 L2C and LLC prefetch misses drop by 8\%, but this does not translate to
 measurable IPC gain. The proxy-to-endpoint gap is the second major finding:
 proxy metrics must not substitute for endpoint validation.
+This is independently corroborated: the Hermes neural off-chip
+predictor~\cite{hermes} increases DRAM transactions by 5--10\% despite
+reducing latency, confirming that proxy gains can coexist with endpoint
+regression.
 
 \section{Discussion}
 \label{sec:discussion}
@@ -936,7 +943,7 @@ revision and binary, module, trace-list, and trace hashes.
 
 \bibliographystyle{IEEEtran}
 
-\begin{thebibliography}{26}
+\begin{thebibliography}{29}
 
 \bibitem{wulf1995}
 W.~A. Wulf and S.~A. McKee,
@@ -1073,6 +1080,24 @@ in \emph{Proc.\ MICRO}, 2022.
 L.~Zheng \emph{et al.},
 ``{SGLang}: Efficient execution of structured language model programs,''
 in \emph{Proc.\ NeurIPS}, 2024.
+
+\bibitem{ppf}
+E.~Bhatia, G.~Chacon, S.~Pugsley, C.~Wilkerson, and D.~A. Jim\'{e}nez,
+``Perceptron-based prefetch filtering,''
+in \emph{Proc.\ ISCA}, 2019, pp.~1--13.
+\newblock DOI: 10.1145/3307650.3322207.
+
+\bibitem{hermes}
+R.~Bera \emph{et al.},
+``{Hermes}: Accelerating long-latency load requests via perceptron-based
+off-chip load prediction,''
+in \emph{Proc.\ MICRO}, 2022.
+\newblock DOI: 10.1109/MICRO56248.2022.00017.
+
+\bibitem{mahling2025}
+J.~Mahling, A.~Kipf, and T.~Rabl,
+``Understanding the impact of hardware prefetching on in-memory workloads,''
+in \emph{Proc.\ DaMoN}, 2025.
 
 \end{thebibliography}
 
