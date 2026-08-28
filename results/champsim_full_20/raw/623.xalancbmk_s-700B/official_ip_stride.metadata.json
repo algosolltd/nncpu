@@ -1,0 +1,125 @@
+{
+  "command": [
+    "/home/user/nncpu_campaign/ChampSim/bin/champsim",
+    "--config",
+    "/mnt/c/Users/Upris/Documents/nncpu/champsim/config/official_ip_stride.json",
+    "--warmup-instructions",
+    "50000000",
+    "--simulation-instructions",
+    "200000000",
+    "--json",
+    "/home/user/nncpu_campaign/results_full_20/raw/623.xalancbmk_s-700B/official_ip_stride.json.partial",
+    "/home/user/nncpu_campaign/traces/623.xalancbmk_s-700B.champsimtrace.xz"
+  ],
+  "completed_at": "2026-08-28T04:48:04+00:00",
+  "fingerprint": {
+    "config": "official_ip_stride",
+    "config_sha256": "e8be211948ac1e88548de9e9a125125e503a300b539b602928cc479e4c5bbe35",
+    "identity": {
+      "campaign_sha256": "8414f39f88a096af402815a46f46908b7d64305773496b7de398de307c8e4f8f",
+      "champsim_binary_sha256": "b2c861d3539974b08b0c5a7cfc4ab41d9ce1286d938b8d0160040c90d3b503d6",
+      "champsim_revision": "e6530c7293a4d93857f634447554281a3e582516",
+      "configs": {
+        "no_l1d_prefetch": "7fc4c8e14fb47088f53be726a059f684586fa88fd71396285a491458e189fd7c",
+        "official_ip_stride": "e8be211948ac1e88548de9e9a125125e503a300b539b602928cc479e4c5bbe35",
+        "raw_stride": "e0bcd823f2ce2ef6a3da50f1849afe8a1885d9f950f54a591cf4029fd8e39ebf",
+        "regularity_stride": "2c56a5c782bd5e045817cf8aee6542c147b446811e3294f75b9cc82b5ac35501"
+      },
+      "module": {
+        "champsim/prefetcher/nncpu_regularity_stride/nncpu_regularity_stride.cc": "cee31f64f9fc4bf381fed444f83a972010f16790285a3ee8a0fdab0ed4aae9c1",
+        "champsim/prefetcher/nncpu_regularity_stride/nncpu_regularity_stride.h": "0ee565f43ffe85d7e96a8462bc4aab8fb414b16268a8cf6437d6eef5b131dec5"
+      },
+      "nncpu_revision": "85941e171725cc80417093dcc6c129ef8e181b61",
+      "trace_list": {
+        "path": "/home/user/nncpu_campaign/dpc3_all_traces.txt",
+        "sha256": "2c06b5d621eb7ed5d333face01e78b007df362b19b48445e0e2c2fcaddaa758f"
+      },
+      "traces": {
+        "600.perlbench_s-210B.champsimtrace.xz": {
+          "bytes": 155413040,
+          "sha256": "ac576730cff4f13d70384dff1939da83250bc0e3de1d9d994fdc637fd1b7cf4d"
+        },
+        "602.gcc_s-734B.champsimtrace.xz": {
+          "bytes": 368694692,
+          "sha256": "a32be73c53946748a1393cca4999f374c5d9d3737a414437d81bb20ed6311bd5"
+        },
+        "603.bwaves_s-3699B.champsimtrace.xz": {
+          "bytes": 34878376,
+          "sha256": "107f5d325cb4f02a144657883176767fbe3153911e37e955201fff1fc6474594"
+        },
+        "605.mcf_s-665B.champsimtrace.xz": {
+          "bytes": 1024276764,
+          "sha256": "b7bef3f68180923fa4b88e1e8a6749487beef99099efce78500a03e3a3e8334e"
+        },
+        "607.cactuBSSN_s-2421B.champsimtrace.xz": {
+          "bytes": 257158316,
+          "sha256": "ae2cf28160028687bd3bdecf9135aeace9553b506d731230176087e1cee26559"
+        },
+        "619.lbm_s-4268B.champsimtrace.xz": {
+          "bytes": 773592004,
+          "sha256": "4516bb1d4c8985678ada3f09706f551dfcb01b2f840fea8a59307a938b263b8f"
+        },
+        "620.omnetpp_s-874B.champsimtrace.xz": {
+          "bytes": 802283392,
+          "sha256": "4034c81a92536f75121a6c5321d5448e0b2b82a8ffb367ae4d1a60bbc5d430a0"
+        },
+        "621.wrf_s-575B.champsimtrace.xz": {
+          "bytes": 352781824,
+          "sha256": "03f8b049cfedf871715493513f505a726194fd09f10b0177f04113be80bead18"
+        },
+        "623.xalancbmk_s-700B.champsimtrace.xz": {
+          "bytes": 160985836,
+          "sha256": "84a437aa68592584522fea1effc5a931e818d110a3d7a181979ea20b7caed4e7"
+        },
+        "625.x264_s-18B.champsimtrace.xz": {
+          "bytes": 246485236,
+          "sha256": "e2782e14cff1fe6c2968f7527aaa4d5172eabc77a56e656cd6773c79696ee4ef"
+        },
+        "627.cam4_s-573B.champsimtrace.xz": {
+          "bytes": 151870320,
+          "sha256": "4b2f91c7f0e571d8826def176df925140151ba5ce51f892c41b74ed7ae69f716"
+        },
+        "628.pop2_s-17B.champsimtrace.xz": {
+          "bytes": 313990504,
+          "sha256": "c7ca142df52d2a37dc8d0caeeb85167537dab31d87df9c42f93c14df3ffe85f9"
+        },
+        "631.deepsjeng_s-928B.champsimtrace.xz": {
+          "bytes": 266293532,
+          "sha256": "a4bf5970bf96d95e35007af9772989c4eaffb9312146f0bc6a13919270400e56"
+        },
+        "638.imagick_s-10316B.champsimtrace.xz": {
+          "bytes": 110796032,
+          "sha256": "3be110e1d3bda154eef0a997fcb33077ef7c6713b819ad351d7d3832738379d8"
+        },
+        "641.leela_s-800B.champsimtrace.xz": {
+          "bytes": 423774804,
+          "sha256": "335d5af7052767a8ec6c0f23f2fb691a565fa27fbd0ae17f7db8cbdc51e74c23"
+        },
+        "644.nab_s-5853B.champsimtrace.xz": {
+          "bytes": 123540036,
+          "sha256": "e3e6eb8b46b1de248130f6e8237904c6bb699769c1de127185ce3ddcb6730030"
+        },
+        "648.exchange2_s-1699B.champsimtrace.xz": {
+          "bytes": 46655880,
+          "sha256": "e6bd8401479905f9b36e66243c541516f03d09f041499c4fbb4fce50a597fc17"
+        },
+        "649.fotonik3d_s-1176B.champsimtrace.xz": {
+          "bytes": 328712224,
+          "sha256": "65ad632ed3c99fdaa71888df47719a86dd019f3ccc123c810239cf5764e6732f"
+        },
+        "654.roms_s-842B.champsimtrace.xz": {
+          "bytes": 199942064,
+          "sha256": "2377f1d782da5f4c158265d3a2379338903e15a56ce0aab013032539c181a82a"
+        },
+        "657.xz_s-3167B.champsimtrace.xz": {
+          "bytes": 465412108,
+          "sha256": "69b5c7c62231b4b116c6a49674e65af9d19ec3fd7bb6157c735d114c23e420ef"
+        }
+      }
+    },
+    "simulation_instructions": 200000000,
+    "trace": "623.xalancbmk_s-700B.champsimtrace.xz",
+    "trace_sha256": "84a437aa68592584522fea1effc5a931e818d110a3d7a181979ea20b7caed4e7",
+    "warmup_instructions": 50000000
+  }
+}
