@@ -1,6 +1,8 @@
 \documentclass[conference]{IEEEtran}
 
+\usepackage[T1]{fontenc}
 \usepackage{amsmath,amssymb,amsfonts}
+\usepackage{newtxtext,newtxmath}
 \newtheorem{definition}{Definition}
 \newtheorem{theorem}{Theorem}
 \usepackage{algorithmic}
@@ -24,6 +26,9 @@
 \title{Confidence-Gated Admission for Hardware Prefetching:\\When the Gate Matters More Than the Predictor}
 
 \author{
+\IEEEauthorblockN{Youssef Majdane}
+\IEEEauthorblockA{Algorithmica Solutions\\youssef@algorithmicasolutions.com}
+\and
 \IEEEauthorblockN{Simone Jarno Casartelli}
 \IEEEauthorblockA{Algorithmica Solutions\\simone@algorithmicasolutions.com}
 \and
@@ -46,7 +51,7 @@ CPU2017 programs in native ChampSim, it removes 35\% of prefetches and
 improves accuracy from 11\% to 15\%, but DRAM reads change by only
 $-0.07\%$---demonstrating that proxy metrics do not predict endpoint
 behavior. We prove gate-closed execution reproduces the no-prefetch
-baseline exactly (Theorem~1). The gate matters more than the predictor,
+baseline exactly (Theorem~\ref{thm:safety}). The gate matters more than the predictor,
 and better proxies do not imply better endpoints.
 \end{abstract}
 
@@ -119,7 +124,7 @@ endpoint gains (DRAM reads, IPC) (\cref{sec:champsim}).
 \texttt{verify\_paper.py} checks local results,
 \texttt{verify\_research.py} checks the full experimental matrix, and
 \texttt{champsim/verify\_results.py} reconstructs native aggregates from
-raw logs (\cref{sec:reproducibility}).
+raw logs (Reproducibility Statement, below).
 \end{enumerate}
 
 \section{Background and Related Work}
@@ -151,10 +156,10 @@ DART~\cite{dart} achieved hardware-practical inference by converting
 attention models into compact table hierarchies via distillation
 (IPDPS~2024). Pathfinder~\cite{pathfinder} demonstrated practical real-time
 online learning with delta patterns at ASPLOS~2024.
-Berti~\cite{berti} won the Third Data Prefetching Championship with a
-local-delta approach that achieves high coverage without global history,
-demonstrating that well-engineered classical predictors remain a strong
-baseline---a point our matched-control results reinforce.
+Berti~\cite{berti} is an accurate local-delta prefetcher that achieves
+high coverage without global history, demonstrating that well-engineered
+classical predictors remain a strong baseline---a point our
+matched-control results reinforce.
 
 \textbf{Positioning.} We share the online-learning ingredient with Pythia,
 the delta-based approach with Pathfinder and Berti, and the deployment
@@ -229,7 +234,8 @@ replay buffer fitted every 16~samples. Training targets and predictions are
 clamped to ${\pm}16$~words: on gather-heavy streams an attention jump moves
 thousands of words, and letting that outlier into the regression averages
 away the sequential delta the model needs. \Cref{fig:architecture} shows the
-full decision and training loop.
+full decision and training loop; \cref{alg:gated} gives the per-access
+pseudocode.
 
 \begin{figure}[t]
 \centering
@@ -319,11 +325,11 @@ Prediction-error gating can reject repeated multimodal streams where a
 dominant pattern exists but prediction error remains high. We therefore
 define a predictor-independent regularity measure:
 \begin{equation}
-R_t = \frac{\max_d |\{i : d_i = d\}|}{W}.
+R_t = \frac{\max_d |\{i : d_i = d\}|}{W_r}.
 \label{eq:regularity}
 \end{equation}
 After eight deltas, the gate admits if and only if $R_t \geq 0.35$ for
-$W = 16$. Window and threshold were chosen on development seeds 0--9; all
+$W_r = 16$. Window and threshold were chosen on development seeds 0--9; all
 confirmatory results use disjoint seeds 10--39.
 
 An exact incremental implementation requires a 16-entry signed 64-bit FIFO
@@ -348,7 +354,7 @@ decision of whether to prefetch.
 \section{Safety Analysis}
 \label{sec:safety}
 
-\subsection{Gate-Closed Safety (Theorem~1)}
+\subsection{\texorpdfstring{Gate-Closed Safety (Theorem~\ref{thm:safety})}{Gate-Closed Safety (Theorem 1)}}
 
 The safety argument has two layers: a theorem about the system design and an
 empirical verification that the theorem's precondition holds on tested
@@ -478,6 +484,8 @@ performance ($1.000\times$) while stride completes in more cycles
 ($0.98\times$). On \texttt{mixed\_rw} the gate is overly conservative:
 the NN stays near baseline while stride achieves $8.69\times$.}
 \label{tab:canonical}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
 \begin{tabular}{@{}l rr rr rr@{}}
 \toprule
 & \multicolumn{2}{c}{baseline} & \multicolumn{2}{c}{stride} & \multicolumn{2}{c}{NN} \\
@@ -580,7 +588,7 @@ real traces (8~seeds). The NN wins head-to-head in two cases: on
 \texttt{random\_read} it beats stride and best-offset (both $0.98\times$);
 on \texttt{kv\_cache\_append} it beats next-line ($1.33\times$ vs.\
 $1.00\times$). On the remaining five workloads the NN underperforms
-heuristics: stride or next-line achieve $1.4$--$11\times$ higher speedup.
+heuristics: stride or next-line achieve up to $11\times$ higher speedup.
 This is the cost of the safety gate's conservatism.
 
 The \texttt{real\_matmul} and \texttt{real\_mergesort} rows expose the
@@ -588,7 +596,7 @@ documented limitation: with a 32-word row stride, the replay buffer's
 ${\pm}16$-word clamp prevents the MLP from representing the pattern, and the
 gate correctly identifies unreliable predictions and suppresses prefetching.
 Classical mechanisms remain the right tool for dense, large-stride, regular
-compute.
+compute (\cref{fig:hitrate}).
 
 \subsection{Feature Ablation and Gate Design}
 
@@ -739,12 +747,14 @@ sign test $p = 0.481$).
 \Cref{fig:champsim_ipc} shows the per-program distribution. Two outliers
 dominate: GCC loses 4.37\% and MCF loses 2.92\%---both high-volume prefetch
 benchmarks where even ``useless'' prefetches may warm the hierarchy. The
-remaining eighteen programs have ratios between 0.997 and 1.001. Across twenty
+remaining eighteen programs have ratios between 0.996 and 1.001. Across twenty
 programs there are seven wins, eleven losses, and two ties; the exact
 sign-test $p = 0.481$ (not significant). The bootstrap interval
 $[0.990,\,1.000]$ reflects the outliers' weight; the sign test reflects
-inconsistent direction. By contrast, every program changes DRAM reads by at
-most 0.5\%, within the ${\pm}1\%$ descriptive margin.
+inconsistent direction. The aggregate DRAM read change ($-0.07\%$) is well within the frozen
+${\pm}1\%$ descriptive margin; seventeen of twenty programs change by
+less than $0.5\%$, with the largest per-program change $-2.1\%$
+(perlbench, on a small absolute base of ${\sim}10.6$K DRAM reads).
 
 Notably, the gated prefetcher achieves a \emph{stronger} result against the
 no-prefetch baseline than raw stride does: $1.040\times$ with $p = 0.004$
@@ -752,7 +762,7 @@ no-prefetch baseline than raw stride does: $1.040\times$ with $p = 0.004$
 (13~wins, 5~losses, 2~ties). The gate trades a marginal amount of peak
 speedup for substantially more consistent directionality.
 
-\subsection{Interpretation: Proxy $\neq$ Endpoint}
+\subsection{\texorpdfstring{Interpretation: Proxy $\neq$ Endpoint}{Interpretation: Proxy ≠ Endpoint}}
 
 The correct interpretation is not ``gating saves memory bandwidth.'' Most
 suppressed prefetches either do not descend the hierarchy or return later as
@@ -768,7 +778,9 @@ proxy metrics must not substitute for endpoint validation.
 This is independently corroborated: the Hermes neural off-chip
 predictor~\cite{hermes} increases DRAM transactions by 5--10\% despite
 reducing latency, confirming that proxy gains can coexist with endpoint
-regression.
+regression. Mahling et al.~\cite{mahling2025} further document how
+hardware prefetching impact varies sharply across in-memory workload
+types, reinforcing the need for endpoint-specific validation.
 
 \section{Discussion}
 \label{sec:discussion}
@@ -789,8 +801,8 @@ improvements do not reliably translate to endpoint gains.
 The \texttt{real\_matmul} and \texttt{real\_mergesort} results
 (\cref{tab:mlagent}) deserve analysis. On these workloads the access
 pattern is a large, fixed stride (32~words for row-major matrix multiply).
-The stride detector recognizes this pattern instantly and achieves
-9--11$\times$ speedup. The MLP's replay buffer, clamped to ${\pm}16$~words,
+Classical prefetchers recognize this pattern instantly; the best
+achieves up to 11$\times$ speedup. The MLP's replay buffer, clamped to ${\pm}16$~words,
 cannot represent a 32-word stride. The gate correctly identifies unreliable
 predictions and suppresses prefetching---safety working as designed, at the
 cost of missing workloads where a simple heuristic suffices.
@@ -812,7 +824,7 @@ prefetches. But at ideal lookahead $D = 1$ the gate slows agent RAG by
 The twenty-program ChampSim study refines the picture. The gate improves
 \emph{directional consistency}: against the no-prefetch baseline, gated
 stride wins on 14 of 20 programs ($p = 0.004$) while raw stride wins on
-only 13 ($p = 0.096$). The gate converts five raw-stride losses into wins
+only 13 ($p = 0.096$). The gate converts three raw-stride losses into wins
 or ties, at the cost of slight regression on two high-volume benchmarks
 (GCC, MCF). The aggregate IPC cost is 0.42\%, within the bootstrap CI that
 includes parity.
@@ -855,18 +867,36 @@ multicore interference. SPEC CPU2017 does not validate the workload-shaped
 ML/agent streams. Local workloads are synthetic or captured from simple
 algorithms; production traces may expose patterns where the gate behaves
 differently.
+The native ChampSim study validates the gate mechanism itself (gated vs.\
+raw stride) but does not replicate the MLP-vs-stride matched control of
+\cref{sec:falsification} externally; extending \cref{tab:matched}'s
+comparison to native SPEC CPU2017 traces is left to future work, and
+readers should not extrapolate the local matched-control finding to the
+native setting without that validation.
 
 \textbf{Construct validity.} We use speedup and L1 hit rate as proxies for
 prefetcher quality locally, and IPC plus DRAM reads as endpoints in
 ChampSim. The ChampSim results demonstrate precisely the risk of proxy
 metrics: improved accuracy did not produce improved IPC. Energy, bandwidth
 waste, and multi-tenant interference are not captured.
+Additionally, our matched-control result concerns a small (257-parameter)
+online delta-regressor trained from scratch on each trace; whether the
+finding generalizes to larger, offline-pretrained architectures such as
+Pythia~\cite{pythia}, TransFetch~\cite{transfetch}, or DART~\cite{dart}
+remains an open question that this paper does not address.
+Finally, our matched-control comparisons gate only the stride predictor;
+next-line and best-offset in \cref{tab:mlagent} remain ungated. The claim
+that the gate is useful independent of the underlying predictor is
+therefore supported by one classical baseline (stride), not by a broader
+sweep of gated classical predictors.
 
 \textbf{Statistical conclusion validity.} All local significance tests are
 paired Wilcoxon signed-rank (non-parametric). We do not apply Bonferroni
 correction for multiple comparisons; with 5 workloads $\times$ 4
 comparisons the adjusted $\alpha$ would be $0.05/20 = 0.0025$, and our
-reported $p$-values ($< 0.001$) survive this correction. ChampSim results
+reported $p$-values supporting our primary claims ($< 0.001$) survive
+this correction; the adverse-direction residual on \texttt{random\_read}
+($p = 0.008$) does not, consistent with its negligible effect size. ChampSim results
 use exact sign tests with Holm correction over the comparison family.
 
 \textbf{Implementation validity.} Custom cache-callback counts in ChampSim
@@ -877,8 +907,9 @@ Exact raw/official endpoint equivalence remains the hard invariant.
 
 \textbf{Model capacity.} The MLP has only 257~parameters; a larger network
 might close the gap with stride on learnable traffic. However, our
-matched-control finding---that the gate, not the predictor, produces the
-safety property---is capacity-independent.
+finding---that the gate, not the predictor, produces the safety
+property---is capacity-independent; whether the relative performance
+of MLP vs.\ gated stride would change with a larger model remains open.
 
 \begin{figure}[t]
 \centering
@@ -915,6 +946,11 @@ Third, the gate's practical value is directional consistency: $14/20$
 programs beat no-prefetch ($p = 0.004$) versus $13/20$ for raw stride
 ($p = 0.096$), trading $0.4\%$ peak IPC for fewer programs where
 prefetching hurts.
+We note this directional pattern is descriptive rather than statistically
+conclusive: the direct gate-vs-raw-stride comparison itself is not
+significant (geometric-mean IPC ratio $0.996$, exact sign test
+$p = 0.481$). We report the win/loss split as suggestive of improved
+consistency, not as an independently established effect.
 
 The path forward is a better gate---handling dense large-stride patterns
 and adapting to workload phase---validated on LLM inference traces with
@@ -928,18 +964,20 @@ Every experiment persists \texttt{config.json} and \texttt{manifest.json}
 \texttt{runs.csv} and aggregated \texttt{summary.csv}. One command reruns
 the full local battery (\texttt{python benchmarks/paper\_experiments.py}).
 Machine-verifiable checks:
-\begin{verbatim}
-python verify_paper.py
+{\small\begin{verbatim}
+python -m benchmarks.verify_paper
 python -m benchmarks.verify_research
 python champsim/verify_results.py \
-  --results results/champsim_holdout_standard
-\end{verbatim}
-The last command reconstructs every native aggregate from raw JSON/logs,
+  --results results/champsim_full_20
+\end{verbatim}}
+The last command reconstructs every native aggregate from the
+\texttt{champsim\_full\_20} artifact (20~traces $\times$ 4~configs = 80~raw runs),
 checks official-control equivalence, and evaluates the frozen predictions.
-The native artifact comprises 80~raw runs (20~traces $\times$ 4~configs);
 the local artifact has 21,240~raw rows. Both record source, configuration,
 unit, and result provenance. Native metadata additionally pins the ChampSim
 revision and binary, module, trace-list, and trace hashes.
+The local MLP backend (pure NumPy) achieves statistically identical hit
+rates to a scikit-learn reference implementation (\cref{fig:backend}).
 
 \bibliographystyle{IEEEtran}
 
@@ -956,7 +994,7 @@ T.-F. Chen and J.-L. Baer,
 \emph{IEEE Trans.\ Computers}, vol.~44, no.~5, pp.~609--623, 1995.
 
 \bibitem{kim2016spp}
-J.~Kim, S.~H. Pugsley, P.~V. Gratz, A.~L.~N. Reddy, C.~Wilkerson, and Z.~Kalbarczyk,
+J.~Kim, S.~H. Pugsley, P.~V. Gratz, A.~L.~N. Reddy, C.~Wilkerson, and Z.~Chishti,
 ``Path confidence based lookahead prefetching,''
 in \emph{Proc.\ MICRO}, 2016, pp.~1--12.
 
@@ -989,14 +1027,14 @@ in \emph{Proc.\ Computing Frontiers (CF)}, 2022.
 \newblock DOI: 10.1145/3528416.3530236.
 
 \bibitem{dart}
-P.~Zhang, R.~Kannan, and V.~K. Prasanna,
+P.~Zhang, N.~Gupta, R.~Kannan, and V.~K. Prasanna,
 ``Attention, distillation, and tabularization: Towards practical neural
 network-based prefetching,''
 in \emph{Proc.\ IPDPS}, 2024.
-\newblock DOI: 10.1109/ipdps57955.2024.00082.
+\newblock DOI: 10.1109/IPDPS57955.2024.00082.
 
 \bibitem{pathfinder}
-Z.~Jia, A.~Kadav, E.~Tilevich, and Y.~Tian,
+L.~Jia, J.~P. McMahon, S.~Gudaparthi, S.~Singh, and R.~Balasubramonian,
 ``{Pathfinder}: Practical real-time learning for data prefetching,''
 in \emph{Proc.\ ASPLOS}, 2024.
 \newblock DOI: 10.1145/3620666.3651332.
@@ -1037,7 +1075,7 @@ in \emph{Proc.\ OSDI}, 2022.
 
 \bibitem{sarathi}
 A.~Agrawal \emph{et al.},
-``{Sarathi-Serve}: Efficient {LLM} serving with chunked prefills,''
+``Taming throughput-latency tradeoff in {LLM} inference with {Sarathi-Serve},''
 in \emph{Proc.\ OSDI}, 2024.
 
 \bibitem{leviathan2023}
@@ -1046,19 +1084,21 @@ Y.~Leviathan, M.~Kalman, and Y.~Matias,
 in \emph{Proc.\ ICML}, 2023.
 
 \bibitem{kvcache_lookahead}
-Y.~Fu \emph{et al.},
-``Lookahead: An inference acceleration framework for large language models with lossless generation,''
-\emph{arXiv preprint arXiv:2402.02057}, 2024.
+Y.~Zhao, Z.~Xie, C.~Liang, C.~Zhuang, and J.~Gu,
+``Lookahead: An inference acceleration framework for large language models
+with lossless generation accuracy,''
+\emph{arXiv preprint arXiv:2312.12728}, 2023.
 
 \bibitem{apex}
-L.~Zheng \emph{et al.},
-``{APEX}: Attention-aware prefetching for efficient {MoE} inference,''
-\emph{arXiv preprint}, 2025.
+A.~Kanani, L.~Badawi, and U.~Y. Ogras,
+``{APEX}: Adaptive expert prefetching for memory-efficient edge {MoE} inference,''
+\emph{arXiv preprint arXiv:2608.11688}, 2026.
 
 \bibitem{kvcache_moe}
-J.~Huang \emph{et al.},
-``Spatio-temporal expert prefetching for {MoE} {LLM} inference,''
-\emph{arXiv preprint}, 2025.
+Y.~Zhao, R.~Bunescu, A.~Louri, A.~Karanth, and K.~Wang,
+``A spatio-temporal expert prefetching framework for efficient {MoE}-based
+{LLM} inference,''
+\emph{arXiv preprint arXiv:2606.15453}, 2026.
 
 \bibitem{kraska2018}
 T.~Kraska, A.~Beutel, E.~H.~Chi, J.~Dean, and N.~Polyzotis,
@@ -1071,10 +1111,11 @@ R.~Laroche, P.~Trichelair, and R.~Tachet~des~Combes,
 in \emph{Proc.\ ICML}, pp.~3652--3661, 2019.
 
 \bibitem{berti}
-A.~Navarro-Torres, B.~Alahmadi, J.~Alastruey, and A.~Gonz\'{a}lez,
+A.~Navarro-Torres, B.~Panda, J.~Alastruey-Bened\'{e}, P.~Ib\'{a}\~{n}ez,
+V.~Vi\~{n}als-Y\'{u}fera, and A.~Ros,
 ``{Berti}: An accurate local-delta data prefetcher,''
-in \emph{Proc.\ MICRO}, 2022.
-\newblock DPC-3 champion.
+in \emph{Proc.\ MICRO}, 2022, pp.~975--991.
+\newblock DOI: 10.1109/MICRO56248.2022.00072.
 
 \bibitem{sglang}
 L.~Zheng \emph{et al.},
@@ -1082,7 +1123,7 @@ L.~Zheng \emph{et al.},
 in \emph{Proc.\ NeurIPS}, 2024.
 
 \bibitem{ppf}
-E.~Bhatia, G.~Chacon, S.~Pugsley, C.~Wilkerson, and D.~A. Jim\'{e}nez,
+E.~Bhatia, G.~Chacon, S.~Pugsley, E.~Teran, P.~V. Gratz, and D.~A. Jim\'{e}nez,
 ``Perceptron-based prefetch filtering,''
 in \emph{Proc.\ ISCA}, 2019, pp.~1--13.
 \newblock DOI: 10.1145/3307650.3322207.
@@ -1092,12 +1133,14 @@ R.~Bera \emph{et al.},
 ``{Hermes}: Accelerating long-latency load requests via perceptron-based
 off-chip load prediction,''
 in \emph{Proc.\ MICRO}, 2022.
-\newblock DOI: 10.1109/MICRO56248.2022.00017.
+\newblock DOI: 10.1109/MICRO56248.2022.00015.
 
 \bibitem{mahling2025}
-J.~Mahling, A.~Kipf, and T.~Rabl,
-``Understanding the impact of hardware prefetching on in-memory workloads,''
+F.~Mahling, M.~Weisgut, and T.~Rabl,
+``Fetch me if you can: Evaluating {CPU} cache prefetching and its reliability
+on high latency memory,''
 in \emph{Proc.\ DaMoN}, 2025.
+\newblock DOI: 10.1145/3736227.3736231.
 
 \end{thebibliography}
 
