@@ -42,7 +42,7 @@
 Learned cache prefetchers are typically evaluated against classical
 predictors that always issue requests, confounding the prediction model
 with the admission policy. We disentangle these variables with matched
-controls: the same confidence gate is applied to both a 257-parameter
+controls: the same admission gate is applied to both a 257-parameter
 online MLP and a classical stride predictor. The neural advantage
 vanishes; the MLP is indistinguishable from gated stride on random
 traffic and slower on most regular streams. The gate itself is
@@ -210,8 +210,10 @@ the filter rather than the underlying predictor.
 We use an in-order, latency-accounting scalar core. This is deliberate:
 every number is a deterministic function of the modeled latencies, and a
 full pipeline front-end would add complexity without changing qualitative
-conclusions. One cycle fetches an instruction. The L1 is fully associative,
-32~lines of 8~words each, LRU. A load/store that hits costs one cycle; a
+conclusions. One cycle fetches an instruction. The default L1 is fully
+associative, 32~lines of 8~words each, LRU; the matched-control
+falsification (\cref{tab:matched}) uses a timed 8-way configuration to
+stress realistic contention. A load/store that hits costs one cycle; a
 miss stalls the core for $L = 40$ cycles. A prefetch inserts a line at zero
 cycle cost, modeling otherwise-idle DRAM bandwidth. Stores are write-through
 with a 16-entry store buffer that stalls only on overflow. Arithmetic
@@ -282,10 +284,11 @@ online learning loop and error history that feeds the gate.}
 \caption{Gated delta predictor (per memory access $a_t$)}
 \label{alg:gated}
 \begin{algorithmic}[1]
-\REQUIRE predictor $f_\theta$; replay $R$ ($\leq 64$); gate window $W = 48$
+\REQUIRE predictor $f_\theta$; replay $R$ ($\leq 64$); gate window $W = 48$; sample counter $t$
 \STATE $d_t \gets a_t - a_{t-1}$
 \STATE $R.\text{append}(\mathbf{x}_{t-1}, \text{clamp}(d_t))$
-\IF{$|R| \bmod 16 = 0$}
+\STATE $t \gets t + 1$
+\IF{$t \bmod 16 = 0$}
   \STATE fit $f_\theta$ on $R$
 \ENDIF
 \STATE $\hat{d}_{t+1} \gets f_\theta(\mathbf{x}_t)$
@@ -352,7 +355,7 @@ update logic are not costed.
 \label{sec:matched}
 
 The matched-control design is the methodological core of this work. We wrap
-the same confidence and regularity gates around a classical stride predictor
+the same admission gates around a classical stride predictor
 (which predicts the previous delta), creating a \emph{gated stride} control.
 Both the MLP and gated stride see the same stream, use the same gate
 parameters, and train/adapt while the gate is closed. The only variable that
@@ -703,7 +706,7 @@ Reductions are aggregate counts over twenty equal-length programs.}
 Metric & Gate vs.\ raw stride \\
 \midrule
 Geometric-mean IPC ratio & 0.996 \\
-Bootstrap 95\% CI        & $[0.990,\,1.000]$ \\
+Bootstrap 95\% CI        & $[0.990,\,0.9997]$ \\
 Exact sign test $p$      & 0.481 (n.s.) \\
 Win / loss / tie         & 7 / 11 / 2 \\
 Accepted L1D prefetches  & $-35.1\%$ (agg.), $-60.5\%$ (med.) \\
@@ -756,7 +759,7 @@ prefetches. The apparent improvement shrinks as it descends the hierarchy:
 8.4\% and 7.6\% fewer L2C and LLC prefetch misses, and only 0.07\% fewer
 DRAM reads. Raw stride achieves $1.044\times$ no-prefetch IPC ($p = 0.096$);
 gated stride achieves $1.040\times$ ($p = 0.004$). The direct gate/raw
-geometric-mean IPC is $0.996$ (bootstrap 95\% CI: $[0.990,\,1.000]$; exact
+geometric-mean IPC is $0.996$ (bootstrap 95\% CI: $[0.990,\,0.9997]$; exact
 sign test $p = 0.481$).
 
 \subsection{Per-Program Analysis}
@@ -767,7 +770,7 @@ benchmarks where even ``useless'' prefetches may warm the hierarchy. The
 remaining eighteen programs have ratios between 0.996 and 1.001. Across twenty
 programs there are seven wins, eleven losses, and two ties; the exact
 sign-test $p = 0.481$ (not significant). The bootstrap interval
-$[0.990,\,1.000]$ reflects the outliers' weight; the sign test reflects
+$[0.990,\,0.9997]$ reflects the outliers' weight; the sign test reflects
 inconsistent direction. The aggregate DRAM read change ($-0.07\%$) is well within the frozen
 ${\pm}1\%$ descriptive margin; seventeen of twenty programs change by
 less than $0.5\%$, with the largest per-program change $-2.1\%$
