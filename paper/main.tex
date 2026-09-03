@@ -493,7 +493,9 @@ not replicate counts.
 \begin{table}[t]
 \centering
 \caption{Canonical run, mean over 30 seeds (cycles $\pm$ 95\% CI, speedup
-$\pm$ std). On \texttt{random\_read} the gated NN achieves near-baseline
+$\pm$ std). Speedup is the mean of per-seed ratios (baseline cycles / config
+cycles), not the ratio of the shown means.
+On \texttt{random\_read} the gated NN achieves near-baseline
 performance ($1.000\times$) while stride completes in more cycles
 ($0.98\times$). On \texttt{mixed\_rw} the gate is overly conservative:
 the NN stays near baseline while stride achieves $8.69\times$.}
@@ -833,7 +835,8 @@ Admission control is not universally beneficial. In the local model, the
 regularity gate improves performance on random ($1.089\times$), phased
 ($1.076\times$), and agent-RAG ($1.016\times$) streams relative to raw
 stride, with reductions of 99.55\%, 83.07\%, and 20.86\% in accepted
-prefetches. But at ideal lookahead $D = 1$ the gate slows agent RAG by
+prefetches. But at ideal lookahead $D = 1$ (a local-simulator setting distinct
+from the $D = 16$ used in \cref{tab:matched}) the gate slows agent RAG by
 1.30\%, and on one deterministic merge-sort trace it is 5.95\% slower.
 
 The twenty-program ChampSim study refines the picture. The gate improves
