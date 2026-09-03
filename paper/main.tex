@@ -19,7 +19,7 @@
 \usetikzlibrary{arrows.meta,positioning,shapes.geometric,fit}
 \usepackage{pgfplots}
 \pgfplotsset{compat=1.18}
-\graphicspath{{figures/}}
+\graphicspath{{figures/}{../results/paper_figures/}}
 
 \begin{document}
 
@@ -51,7 +51,7 @@ CPU2017 programs in native ChampSim, it removes 35\% of prefetches and
 improves accuracy from 11\% to 15\%, but DRAM reads change by only
 $-0.07\%$---demonstrating that proxy metrics do not predict endpoint
 behavior. We prove gate-closed execution reproduces the no-prefetch
-baseline exactly (Theorem~\ref{thm:safety}). The gate matters more than the predictor,
+baseline exactly. The gate matters more than the predictor,
 and better proxies do not imply better endpoints.
 \end{abstract}
 
@@ -90,9 +90,12 @@ classical unit that always issues requests. This confounds two independent
 variables---the address-prediction model and the admission policy. A gated
 learned predictor that stays silent on random traffic looks ``safer'' than an
 always-on stride unit, but the safety comes from the gate, not from the
-neural network. No prior work we have found applies the same admission
-policy to both the learned and classical predictor before drawing
-conclusions about the predictor's value.
+neural network. Prior throttling mechanisms such as Feedback-Directed
+Prefetching~\cite{fdp2007} adjust aggressiveness based on accuracy feedback,
+but apply a single policy to one predictor at a time.
+No prior work we have found uses a matched-control design that applies the
+\emph{same} admission policy to both a learned and a classical predictor
+before drawing conclusions about the predictor's value.
 
 \textbf{Why it matters now.}
 Real workloads are rarely all-or-nothing. An LLM inference loop cycles
@@ -282,7 +285,7 @@ online learning loop and error history that feeds the gate.}
 \REQUIRE predictor $f_\theta$; replay $R$ ($\leq 64$); gate window $W = 48$
 \STATE $d_t \gets a_t - a_{t-1}$
 \STATE $R.\text{append}(\mathbf{x}_{t-1}, \text{clamp}(d_t))$
-\IF{$|R| \geq 16$}
+\IF{$|R| \bmod 16 = 0$}
   \STATE fit $f_\theta$ on $R$
 \ENDIF
 \STATE $\hat{d}_{t+1} \gets f_\theta(\mathbf{x}_t)$
@@ -309,14 +312,22 @@ absolute prediction errors. The gate is:
 \end{cases}
 \label{eq:gate}
 \end{equation}
-where $\tau = 1.0$, selected from $\{0.5, 1.0, 2.0\}$: $\tau = 0.5$ closes
-the gate too aggressively on learnable streams; $\tau = 2.0$ opens it too
-liberally and degrades safety on random traffic. The median is robust to
-outliers from attention gathers; scaling by $|\hat{d}|$ makes the threshold
-adaptive. On unlearnable streams the median error stays high, the gate
-remains closed, and the predictor issues no prefetches. On learnable streams
-the error drops quickly and the gate opens. When traffic switches phase, the
-error window adapts within $W$ accesses.
+where $\tau = 1.0$, selected from $\{0.5, 1.0, 2.0\}$ on development seeds
+0--9: $\tau = 0.5$ closes the gate too aggressively on learnable streams;
+$\tau = 2.0$ opens it too liberally and degrades safety on random traffic.
+The median is robust to outliers from attention gathers; scaling by
+$|\hat{d}|$ makes the threshold adaptive. On unlearnable streams the median
+error stays high, the gate remains closed, and the predictor issues no
+prefetches. On learnable streams the error drops quickly and the gate opens.
+When traffic switches phase, the error window adapts within $W$ accesses.
+
+\textbf{Hardware cost.} The confidence gate requires a running median over a
+$W\!=\!48$ entry error window---an awkward structure for hardware, typically
+requiring a sorted insertion buffer or approximate median network. Combined
+with the MLP's ${\approx}26\,\mu$s NumPy inference latency, the confidence
+gate is practical only as a simulation-level instrument. The regularity gate
+(\cref{sec:regularity_gate}) is the hardware-viable alternative; the native
+ChampSim evaluation validates it exclusively.
 
 \subsection{Regularity Gate}
 \label{sec:regularity_gate}
@@ -454,8 +465,11 @@ baseline on all of them (\cref{fig:sensitivity}).
 \subsection{ChampSim Evaluation Protocol}
 \label{sec:champsim_protocol}
 
-The gate is implemented as a native ChampSim runtime L1D prefetcher module
+The \emph{regularity gate} (\cref{sec:regularity}) is implemented as a native
+ChampSim runtime L1D prefetcher module
 using official \texttt{develop} commit \texttt{e6530c7}~\cite{champsim}.
+The confidence gate remains a local-simulator instrument only; the native
+study evaluates the regularity gate on the classical stride predictor.
 One binary selects no~L1D prefetch, official \texttt{ip\_stride},
 gate-disabled matched stride, or gated stride through JSON configuration.
 The gate-disabled module must match official \texttt{ip\_stride} exactly on
@@ -503,7 +517,7 @@ phased\_sw    & 43\,629 & .492 & 39\,906 & 1.09$\times$ & 39\,565$\pm$72 & 1.10$
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\columnwidth]{fig2_wilcoxon}
+\includegraphics[width=\columnwidth]{t_stats}
 \caption{Paired Wilcoxon results (30 seeds): median difference in total
 cycles per (workload, comparison). A negative value means the first
 configuration completes in fewer cycles.}
@@ -512,7 +526,7 @@ configuration completes in fewer cycles.}
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\columnwidth]{fig3_speedup}
+\includegraphics[width=\columnwidth]{t_speedup}
 \caption{Speedup vs.\ no-prefetch (30 seeds, error bars $= 1$ std). The NN
 tracks stride on regular streams and rests exactly at $1.0\times$ on random.}
 \label{fig:speedup}
@@ -576,7 +590,7 @@ real\_mergesort  & 6.86$\times$ & 8.68$\times$ & 9.04$\times$ & 1.00$\times$ \\
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\columnwidth]{fig4_hitrate_cycles}
+\includegraphics[width=\columnwidth]{t_hit_cycles}
 \caption{Left: L1 hit rate with 95\% CI; \texttt{random\_read} is the only
 row where stride drops below baseline. Right: total cycles on a log scale
 (95\% CI).}
@@ -629,7 +643,8 @@ $1.84 \to 1.95\times$, with no regression on random or smooth streams.
 
 \begin{table}[t]
 \centering
-\caption{MLP vs.\ regularity-filtered stride, local timed 8-way, $D=16$.
+\caption{MLP vs.\ regularity-filtered stride, local timed 8-way associativity,
+prefetch distance $D=16$ cache lines.
 $B > 1$ favors the MLP; holdout seeds 10--39.}
 \label{tab:matched}
 \begin{tabular}{@{}l rr@{}}
@@ -826,8 +841,8 @@ The twenty-program ChampSim study refines the picture. The gate improves
 stride wins on 14 of 20 programs ($p = 0.004$) while raw stride wins on
 only 13 ($p = 0.096$). The gate converts three raw-stride losses into wins
 or ties, at the cost of slight regression on two high-volume benchmarks
-(GCC, MCF). The aggregate IPC cost is 0.42\%, within the bootstrap CI that
-includes parity.
+(GCC, MCF). The aggregate IPC cost is 0.42\%, with a bootstrap CI upper bound
+within 0.05\% of parity ($[0.990,\,0.9997]$).
 
 The trade-off is between prefetch volume and accuracy on one hand, and
 performance on the other. Reducing prefetches is not intrinsically valuable
@@ -895,8 +910,8 @@ paired Wilcoxon signed-rank (non-parametric). We do not apply Bonferroni
 correction for multiple comparisons; with 5 workloads $\times$ 4
 comparisons the adjusted $\alpha$ would be $0.05/20 = 0.0025$, and our
 reported $p$-values supporting our primary claims ($< 0.001$) survive
-this correction; the adverse-direction residual on \texttt{random\_read}
-($p = 0.008$) does not, consistent with its negligible effect size. ChampSim results
+this correction; the practically negligible residual on \texttt{random\_read}
+($p = 0.008$) does not, consistent with its negligible effect size ($< 0.03\%$ of cycles). ChampSim results
 use exact sign tests with Holm correction over the comparison family.
 
 \textbf{Implementation validity.} Custom cache-callback counts in ChampSim
@@ -913,7 +928,7 @@ of MLP vs.\ gated stride would change with a larger model remains open.
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\columnwidth]{fig7_backend}
+\includegraphics[width=\columnwidth]{t_backend}
 \caption{Backend wall-time comparison: pure-NumPy vs.\ scikit-learn MLP at
 statistically identical hit rates.}
 \label{fig:backend}
@@ -921,7 +936,7 @@ statistically identical hit rates.}
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\columnwidth]{fig8_sensitivity}
+\includegraphics[width=\columnwidth]{t_machine}
 \caption{Machine sensitivity: NN vs.\ stride speedup for two settings of
 cache capacity, DRAM latency, and line size. The NN's safety on random
 persists across all settings.}
@@ -973,15 +988,16 @@ python champsim/verify_results.py \
 The last command reconstructs every native aggregate from the
 \texttt{champsim\_full\_20} artifact (20~traces $\times$ 4~configs = 80~raw runs),
 checks official-control equivalence, and evaluates the frozen predictions.
-the local artifact has 21,240~raw rows. Both record source, configuration,
-unit, and result provenance. Native metadata additionally pins the ChampSim
-revision and binary, module, trace-list, and trace hashes.
+The local artifact (\texttt{results/research\_gate\_validation/runs.csv})
+has 21,240~raw rows. The local and native artifacts each record source,
+configuration, unit, and result provenance. Native metadata additionally
+pins the ChampSim revision and binary, module, trace-list, and trace hashes.
 The local MLP backend (pure NumPy) achieves statistically identical hit
 rates to a scikit-learn reference implementation (\cref{fig:backend}).
+All code, data, and verification scripts are publicly available at
+\url{https://github.com/algosolltd/nncpu}.
 
-\bibliographystyle{IEEEtran}
-
-\begin{thebibliography}{29}
+\begin{thebibliography}{30}
 
 \bibitem{wulf1995}
 W.~A. Wulf and S.~A. McKee,
@@ -1141,6 +1157,13 @@ F.~Mahling, M.~Weisgut, and T.~Rabl,
 on high latency memory,''
 in \emph{Proc.\ DaMoN}, 2025.
 \newblock DOI: 10.1145/3736227.3736231.
+
+\bibitem{fdp2007}
+S.~Srinath, O.~Mutlu, H.~Kim, and Y.~N. Patt,
+``Feedback directed prefetching: Improving the performance and
+bandwidth-efficiency of hardware prefetchers,''
+in \emph{Proc.\ HPCA}, 2007, pp.~63--74.
+\newblock DOI: 10.1109/HPCA.2007.346185.
 
 \end{thebibliography}
 
