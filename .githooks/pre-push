@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root=$(git rev-parse --show-toplevel)
+# Git exports repository-local variables to hooks; clear these before creating
+# or entering another worktree. Keep authentication and the ordinary tool PATH.
+while IFS= read -r name; do unset "$name"; done < <(git rev-parse --local-env-vars)
+declare -A checked=()
+temporary=
+checkout=
+cleanup() {
+  if [[ -n "$checkout" && -d "$checkout" ]]; then
+    git -C "$root" worktree remove --force "$checkout" >/dev/null 2>&1 || true
+  fi
+  [[ -z "$temporary" ]] || rm -rf -- "$temporary"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+while read -r local_ref local_sha remote_ref remote_sha extra; do
+  [[ -n "$local_ref" ]] || continue
+  [[ -n "$local_sha" && -n "$remote_ref" && -n "$remote_sha" && -z "$extra" ]] || { echo 'Malformed pre-push input.' >&2; exit 1; }
+  [[ "$local_sha" =~ ^0+$ ]] && continue
+  [[ "$local_sha" =~ ^[a-fA-F0-9]{40}$|^[a-fA-F0-9]{64}$ ]] || { echo 'Invalid pushed object ID.' >&2; exit 1; }
+  sha=$(git -C "$root" rev-parse --verify "$local_sha^{commit}")
+  [[ ! -v "checked[$sha]" ]] || continue
+  checked[$sha]=1
+  temporary=$(mktemp -d "${TMPDIR:-/tmp}/algo-pre-push.XXXXXXXX")
+  checkout="$temporary/source"
+  mkdir "$temporary/no-hooks"
+  git -C "$root" -c "core.hooksPath=$temporary/no-hooks" worktree add --quiet --detach "$checkout" "$sha"
+  [[ -f "$checkout/scripts/verify.sh" ]] || { echo 'Pushed commit has no verification script. Include the local-checks changes first.' >&2; exit 1; }
+  echo "[pre-push] Checking ${sha:0:12} in an isolated worktree."
+  (cd -- "$checkout" && bash scripts/verify.sh quick --install)
+  cleanup
+  temporary=
+  checkout=
+done
