@@ -31,3 +31,7 @@ Change the native manifest's selected version/revision and regenerate its lock u
 ## Python environment updates
 
 Install uv 0.12.7 and Python 3.12. The initial requirements.lock preserves versions observed in the existing research environment and includes hashes. To select new versions, update requirements.txt if needed, run `uv pip compile requirements.txt --python-version 3.12 --generate-hashes -o requirements.lock`, then run both gates.
+
+## Read-only release check
+
+An operator with the existing GitHub CLI login can run `bash scripts/check-release.sh FULL_SHA [deploy-branch]` (main by default). This requires a clean checkout at the selected SHA, the deploy branch still pointing to it, a successful latest push CI for that exact SHA, and the local full gate. It checks the branch and CI again after the full gate to catch changes during verification. It does not push, merge, approve or deploy anything. Missing/red/pending CI and local failures stop the command. GitHub CLI is only required for this release step, not to import libraries with an existing Git credential helper.
