@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "created_utc": "2026-08-27T17:32:52Z",
+  "config_path": "benchmarks/specdec_holdout_config.json",
+  "config_sha256": "955e69c84116e7161df90e52845d302359b8d9c257f99f48e3811fb222bcd63d",
+  "prompts_path": "benchmarks/specdec_prompts.json",
+  "prompts_sha256": "ac3c73bf6b5eaa671b4763c4395e912c813ad66119598add4f05dcce38ef8f09",
+  "harness_sha256": "b275e5e9d5d1ac0f7b027066aa2b7709ce20dba7ff72d661572c86969e455b69",
+  "runtime_commit": "58546250cfaa1dc4a33ae6171dbe4344a96206e8",
+  "runtime_binary_sha256": "162a394c8789f7e11ab4ec22a35f241abe9e6a2222e0780596c95e3e0c4acc2a",
+  "model_sha256": {
+    "target": "626b4a6678b86442240e33df819e00132d3ba7dddfe1cdc4fbb18e0a9615c62d",
+    "draft": "74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db"
+  },
+  "host": {
+    "platform": "Linux-7.1.5-arch1-2-x86_64-with-glibc2.44",
+    "machine": "x86_64",
+    "logical_cpu_count": 24
+  },
+  "phase": "holdout",
+  "repeats": 3,
+  "expected_n_predict": 96,
+  "require_byte_identical_output": false
+}

@@ -141,18 +141,59 @@ def _dirty_working_tree() -> bool:
         return True
 
 
-def source_digest() -> str:
-    """SHA-256 of files that can affect simulation or experiment outputs."""
+def source_digest(revision: str | None = None) -> str:
+    """SHA-256 of files that can affect simulation or experiment outputs.
+
+    When ``revision`` is supplied, hash the files from that Git commit.  This
+    lets validators check a historical artifact against the exact source tree
+    recorded in its manifest without requiring the current checkout to remain
+    byte-for-byte frozen forever.
+    """
     root = Path(__file__).resolve().parents[1]
-    paths = [root / "main.py", root / "requirements.txt", root / "pytest.ini"]
-    for directory in (root / "nncpu", root / "benchmarks", root / "webapp"):
-        paths.extend(directory.rglob("*.py"))
-        paths.extend(directory.rglob("*.html"))
     digest = hashlib.sha256()
-    for path in sorted({p for p in paths if p.exists()}):
-        digest.update(str(path.relative_to(root)).encode("utf-8"))
+
+    if revision is not None:
+        listing = subprocess.run(
+            [
+                "git", "ls-tree", "-r", "--name-only", revision, "--",
+                "main.py", "requirements.txt", "pytest.ini", "nncpu",
+                "benchmarks", "webapp",
+            ],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=10,
+        )
+        names = {
+            name for name in listing.stdout.splitlines()
+            if name in {"main.py", "requirements.txt", "pytest.ini"}
+            or name.endswith((".py", ".html"))
+        }
+        sources = []
+        for name in sorted(names):
+            blob = subprocess.run(
+                ["git", "show", f"{revision}:{name}"],
+                cwd=root,
+                capture_output=True,
+                check=True,
+                timeout=10,
+            ).stdout
+            sources.append((name, blob))
+    else:
+        paths = [root / "main.py", root / "requirements.txt", root / "pytest.ini"]
+        for directory in (root / "nncpu", root / "benchmarks", root / "webapp"):
+            paths.extend(directory.rglob("*.py"))
+            paths.extend(directory.rglob("*.html"))
+        sources = [
+            (str(path.relative_to(root)), path.read_bytes())
+            for path in sorted({p for p in paths if p.exists()})
+        ]
+
+    for name, payload in sources:
+        digest.update(name.encode("utf-8"))
         digest.update(b"\0")
-        digest.update(path.read_bytes())
+        digest.update(payload)
         digest.update(b"\0")
     return digest.hexdigest()
 

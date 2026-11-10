@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "protocol": "confirmatory-v2",
+  "runtime": {
+    "server": ".research/llama.cpp/build-cpu/bin/llama-server",
+    "commit": "58546250cfaa1dc4a33ae6171dbe4344a96206e8"
+  },
+  "models": {
+    "target": {
+      "path": ".research/models/qwen2.5-3b-instruct-q4_k_m.gguf",
+      "repository": "Qwen/Qwen2.5-3B-Instruct-GGUF",
+      "commit": "7dabda4d13d513e3e842b20f0d435c732f172cbe",
+      "sha256": "626b4a6678b86442240e33df819e00132d3ba7dddfe1cdc4fbb18e0a9615c62d"
+    },
+    "draft": {
+      "path": ".research/models/qwen2.5-0.5b-instruct-q4_k_m.gguf",
+      "repository": "Qwen/Qwen2.5-0.5B-Instruct-GGUF",
+      "commit": "9217f5db79a29953eb74d5343926648285ec7e67",
+      "sha256": "74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db"
+    }
+  },
+  "prompts": "benchmarks/specdec_prompts.json",
+  "resources": {
+    "threads": 4,
+    "cpu_affinity": "0-3",
+    "nice": 10,
+    "context": 2048,
+    "batch": 256,
+    "parallel": 1
+  },
+  "generation": {
+    "n_predict": 96,
+    "ignore_eos": true,
+    "temperature": 0,
+    "top_k": 1,
+    "top_p": 1.0,
+    "min_p": 0.0,
+    "seed": 123,
+    "cache_prompt": false
+  },
+  "draft_p_split": 0.0,
+  "require_byte_identical_output": false,
+  "policies": [
+    {"name": "target_only", "draft_max": 0, "p_min": null},
+    {"name": "static_2", "draft_max": 2, "p_min": 0.0},
+    {"name": "static_4", "draft_max": 4, "p_min": 0.0},
+    {"name": "gate_08", "draft_max": 16, "p_min": 0.8},
+    {"name": "gate_095", "draft_max": 16, "p_min": 0.95}
+  ]
+}

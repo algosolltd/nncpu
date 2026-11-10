@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "phase": "holdout",
+  "raw_runs": 120,
+  "expected_runs": 120,
+  "complete": true,
+  "duplicates": 0,
+  "repeats_seen": [
+    0,
+    1,
+    2
+  ],
+  "prompt_units": 8,
+  "policies": {
+    "gate_08": {
+      "prompt_units": 8,
+      "geomean_tps": 27.23666906511066,
+      "geomean_speedup_vs_target": 1.0627355486502594,
+      "aggregate_draft_n": 1794,
+      "aggregate_draft_n_accepted": 1623,
+      "aggregate_acceptance": 0.9046822742474916
+    },
+    "gate_095": {
+      "prompt_units": 8,
+      "geomean_tps": 24.411546793019614,
+      "geomean_speedup_vs_target": 0.9525033517300907,
+      "aggregate_draft_n": 1332,
+      "aggregate_draft_n_accepted": 1278,
+      "aggregate_acceptance": 0.9594594594594594
+    },
+    "static_2": {
+      "prompt_units": 8,
+      "geomean_tps": 24.188864745784823,
+      "geomean_speedup_vs_target": 0.9438146193789758,
+      "aggregate_draft_n": 1746,
+      "aggregate_draft_n_accepted": 1392,
+      "aggregate_acceptance": 0.7972508591065293
+    },
+    "static_4": {
+      "prompt_units": 8,
+      "geomean_tps": 24.02676285599428,
+      "geomean_speedup_vs_target": 0.9374896374080907,
+      "aggregate_draft_n": 2370,
+      "aggregate_draft_n_accepted": 1665,
+      "aggregate_acceptance": 0.7025316455696202
+    },
+    "target_only": {
+      "prompt_units": 8,
+      "geomean_tps": 25.628830332911086,
+      "geomean_speedup_vs_target": 1.0,
+      "aggregate_draft_n": 0,
+      "aggregate_draft_n_accepted": 0,
+      "aggregate_acceptance": null
+    }
+  },
+  "output_mismatches": [
+    "gsm8k-10",
+    "gsm8k-25",
+    "gsm8k-50",
+    "humaneval-10",
+    "humaneval-100",
+    "humaneval-25"
+  ],
+  "token_count_mismatches": [],
+  "proxy_reversals": [
+    {
+      "higher_acceptance_policy": "gate_095",
+      "lower_acceptance_policy": "gate_08",
+      "acceptance_difference": 0.05477718521196784,
+      "geomean_tps_ratio": 0.8962750450380902,
+      "wins": 0,
+      "losses": 8,
+      "ties": 0,
+      "exact_two_sided_sign_p": 0.0078125
+    }
+  ]
+}

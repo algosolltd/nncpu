@@ -4,9 +4,11 @@ __pycache__/
 !results/**/*.png
 .pytest_cache/
 .venv/
+.research/
 results/smoke*/
 results/dash_*/
 paper/*.pdf
+!paper/cross_domain.pdf
 paper/*.log
 paper/*.aux
 paper/*.out

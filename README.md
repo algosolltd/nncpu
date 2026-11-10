@@ -219,3 +219,7 @@ prefetch accuracy, and speedup per config.
 ## License
 
 MIT; see `LICENSE`.
+
+## Local verification
+
+See [local checks and staged publication](docs/local-checks.md) for the quick/full gates, optional pre-push hook, credential setup and release prerequisites.
