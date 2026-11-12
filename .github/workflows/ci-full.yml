@@ -1,4 +1,4 @@
-name: CI
+name: ci-full
 
 on:
   workflow_dispatch:
@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  verify:
+  full:
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     steps:
